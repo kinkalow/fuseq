@@ -7,22 +7,27 @@ from fuseq.checker import Checker
 class Option:
     def __init__(self):
         self._parse()
-        self._create()
+        self._check()
 
     def _parse(self):
         prog = 'fuseq'
         parser = argparse.ArgumentParser(prog=prog)
         parser.add_argument('genomon_dir', metavar='input_directory', action='store', help='input directory')
+        parser.add_argument('output_dir', metavar='output_directory', help='output directory')
         parser.add_argument('--version', action='version', version=f'{prog}: {__version__}')
-        self._args = parser.parse_args()
+        self.args = parser.parse_args()
 
-    def _create(self):
-        args = self._args
+    def _check(self):
+        args = self.args
         Checker.isdir(args.genomon_dir)
+        #if os.path.isdir(args.output_dir):
+        #    print('output directory exists')
+        #    exit(1)
 
-        self._opts = {}
-        self._opts['genomon_dir'] = os.path.abspath(args.genomon_dir)
-
-    @property
-    def opts(self):
-        return self._opts
+    def create(self):
+        args = self.args
+        opts = {}
+        opts['genomon_dir'] = os.path.abspath(args.genomon_dir)
+        opts['out_dir'] = os.path.abspath(args.output_dir)
+        opts = argparse.Namespace(**opts)
+        return opts

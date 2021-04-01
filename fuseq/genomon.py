@@ -6,14 +6,14 @@ class Genomon:
     def __init__(self, genomon_dir):
         self.genomon_dir = genomon_dir
 
-        self._path_mf = {}
-        self._path_jun = {}
-        self._paths = [self._path_mf, self._path_jun]
+        self._mf_path = {}
+        self._jun_path = {}
+        self._paths = [self._mf_path, self._jun_path]
 
-        self._create_path_mf()
-        self._create_path_jun()
+        self._create_mf_path()
+        self._create_jun_path()
 
-    def _create_path_mf(self):
+    def _create_mf_path(self):
         f = 'merge_fusionfusion.txt'
         #f = 'merge_fusionfusion_filt.txt'
         base = f'{self.genomon_dir}/post_analysis'
@@ -21,9 +21,9 @@ class Genomon:
         for d in os.listdir(base):
             path = f'{base}/{d}/{f}'
             Checker.isfile(path)
-            self._path_mf[d] = path
+            self._mf_path[d] = path
 
-    def _create_path_jun(self):
+    def _create_jun_path(self):
         f1 = '.junction'
         f2 = '.sam'
         base = f'{self.genomon_dir}/star'
@@ -34,16 +34,16 @@ class Genomon:
             f_jun = li[0]
             f_sam = f_jun[:-len(f1)] + f2
             Checker.isfile(f_sam)
-            self._path_jun[d] = f_jun
+            self._jun_path[d] = f_jun
 
     @property
     def paths(self):
         return self._paths
 
     @property
-    def path_mf(self):
-        return self._path_mf
+    def mf_dic(self):
+        return self._mf_path
 
     @property
-    def path_jun(self):
-        return self._path_jun
+    def jun_dic(self):
+        return self._jun_path
