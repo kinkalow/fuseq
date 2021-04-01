@@ -32,11 +32,14 @@ class Preprocess():
         return data
 
     def process(self, data):
-        base_out_dir = f'{self.out_dir}/{self.mf_dir}'
+        base_out_dir = f'{self.out_dir}/{self.mf_dir}/work'
         os.makedirs(base_out_dir, exist_ok=True)
 
         cmd_template = '''\
 #!/bin/bash
+
+set -eu
+
 chr1='{chr1}'
 chr2='{chr2}'
 bp1='{bp1}'
@@ -44,23 +47,35 @@ bp2='{bp2}'
 jun_path='{jun_path}'
 sam_path="${{jun_path%\\.*}}.sam"
 out_path='{out_path}'
+
 [ -f "$out_path" ] && rm "$out_path"
-for readname in $(awk '{{ if ( ($1 == "'$chr1'" && $2 == "'$bp1'" && $4 == "'$chr2'" && $5 == "'$bp2'") || \\
-                               ($1 == "'$chr2'" && $2 == "'$bp2'" && $4 == "'$chr1'" && $5 == "'$bp1'")    \\
-                             ) print $0 }}' "$jun_path" | cut -f 10); do
+
+for readname in $(awk '{{
+  if ( ($1 == "'$chr1'" && $2 == "'$bp1'" && $4 == "'$chr2'" && $5 == "'$bp2'") || \\
+       ($1 == "'$chr2'" && $2 == "'$bp2'" && $4 == "'$chr1'" && $5 == "'$bp1'")    \\
+     ) print $0
+}}' "$jun_path" | cut -f 10); do
   out=$(grep -e "^$readname" "$sam_path" | awk '{{ if ($9 == 0) print $0}}' | cut -f 10)
+  #echo ">$readname\\n$out"
   echo ">$readname\\n$out" >> "$out_path"
 done
 '''
 
+        outs = []
+        import time
+        start = time.time()
         for i, [sample, chr1, bp1, chr2, bp2] in enumerate(data):
             jun_path = self.jun_dic[sample]
             out_path = f'{base_out_dir}/{i}'
             cmd = cmd_template.format(chr1=chr1, bp1=bp1, chr2=chr2, bp2=bp2, jun_path=jun_path, out_path=out_path)
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
             out, err = p.communicate()
-            print(p.returncode, out, err)
-            exit()
+            if p.returncode != 0:
+                print(f'[Error] return code: {p.returncode} for {sample} {chr1} {bp1} {chr2} {bp2}')
+                print(err)
+                continue
+            outs.append([out])
+        print(f"{time.time() - start:.3f}[s]")
 
     def process_slow(self, data):
         # Extract readnames from junction file

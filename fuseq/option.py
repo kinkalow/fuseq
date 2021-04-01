@@ -12,8 +12,9 @@ class Option:
     def _parse(self):
         prog = 'fuseq'
         parser = argparse.ArgumentParser(prog=prog)
-        parser.add_argument('genomon_dir', metavar='input_directory', action='store', help='input directory')
-        parser.add_argument('output_dir', metavar='output_directory', help='output directory')
+        parser.add_argument('genomon_dir', metavar='input_directory', type=str, help='input directory')
+        parser.add_argument('output_dir', metavar='output_directory', type=str, help='output directory')
+        parser.add_argument('--no-use-filt', default=False, action='store_true', help='use merge_fusionfusion.txt instead of merge_fusionfusion_filt.txt')
         parser.add_argument('--version', action='version', version=f'{prog}: {__version__}')
         self.args = parser.parse_args()
 
@@ -29,5 +30,6 @@ class Option:
         opts = {}
         opts['genomon_dir'] = os.path.abspath(args.genomon_dir)
         opts['out_dir'] = os.path.abspath(args.output_dir)
+        opts['use_filt'] = False if args.no_use_filt else True
         opts = argparse.Namespace(**opts)
         return opts
