@@ -29,7 +29,8 @@ class Option:
         args = self.args
         opts = {}
         opts['genomon_dir'] = os.path.abspath(args.genomon_dir)
-        opts['out_dir'] = os.path.abspath(args.output_dir)
+        opts['out_base_dir'] = os.path.abspath(args.output_dir)
+        opts['preprocess_parallel_num'] = 4
         opts['use_filt'] = False if args.no_use_filt else True
         opts = argparse.Namespace(**opts)
         return opts

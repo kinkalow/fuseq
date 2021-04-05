@@ -1,5 +1,6 @@
 import os
 import subprocess
+import multiprocessing
 
 class Preprocess():
     """
@@ -10,7 +11,9 @@ class Preprocess():
         self.mf_dir = mf_dir    # directory name containing merge_fusionfusion
         self.mf_path = mf_path  # merge_fusionfusion path
         self.jun_dic = jun_dic  # {directory name containing junction file, junction path}
-        self.out_dir = opts.out_dir
+        self.out_base_dir = opts.out_base_dir
+        self.parallel_num = opts.preprocess_parallel_num
+        self.out_dir = f'{self.out_base_dir}/{self.mf_dir}/_work'
         #self._proc()
 
     def get_data(self):
@@ -32,10 +35,16 @@ class Preprocess():
         return data
 
     def process(self, data):
-        base_out_dir = f'{self.out_dir}/{self.mf_dir}/work'
-        os.makedirs(base_out_dir, exist_ok=True)
+        os.makedirs(self.out_dir, exist_ok=True)
 
-        cmd_template = '''\
+        with open(self.mf_path, 'r') as f:
+            line_cnt = sum([1 for _ in f])
+        parallel_num = min(line_cnt, self.parallel_num)
+        data_num = line_cnt // parallel_num if line_cnt % parallel_num == 0 else line_cnt // parallel_num + 1
+        heads = [i * data_num for i in range(parallel_num)] + [line_cnt]
+
+        def task(i_proc):
+            cmd_template = '''\
 #!/bin/bash
 
 set -eu
@@ -48,30 +57,44 @@ jun_path='{jun_path}'
 sam_path="${{jun_path%\\.*}}.sam"
 out_path='{out_path}'
 
-[ -f "$out_path" ] && rm "$out_path"
+#[ -f "$out_path" ] && rm "$out_path"
 
 for readname in $(cat "$jun_path" | awk '{{ \\
   if ( ($1 == "'$chr1'" && $2 == "'$bp1'" && $4 == "'$chr2'" && $5 == "'$bp2'") || \\
        ($1 == "'$chr2'" && $2 == "'$bp2'" && $4 == "'$chr1'" && $5 == "'$bp1'")    \\
-     ) print $0 }}' | cut -f 10); do
-    out=$(grep -e "^$readname" "$sam_path" | awk '{{ if ($9 == 0) print $10 }}')
+     ) print $10 }}'); do
+    out=$(grep "^$readname" "$sam_path" | awk '{{ if ($9 == 0) print $10 }}')
     echo ">$readname\\n$out" >> "$out_path"
 done
 '''
-        outs = []
+            outs = []
+            head = heads[i_proc]
+            tail = heads[i_proc + 1]
+            digit = len(str(parallel_num).split('.')[0])
+            out_path = f'{self.out_dir}/{str(i_proc).zfill(digit)}'
+            if os.path.exists(out_path):
+                os.remove(out_path)
+
+            for [sample, chr1, bp1, chr2, bp2] in data[head:tail]:
+                jun_path = self.jun_dic[sample]
+                cmd = cmd_template.format(chr1=chr1, bp1=bp1, chr2=chr2, bp2=bp2, jun_path=jun_path, out_path=out_path)
+                p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+                out, err = p.communicate()
+                if p.returncode != 0:
+                    print(f'[Error] return code: {p.returncode} for {sample} {chr1} {bp1} {chr2} {bp2}')
+                    print(err)
+                    continue
+                outs.append([out])
+
         import time
         start = time.time()
-        for i, [sample, chr1, bp1, chr2, bp2] in enumerate(data):
-            jun_path = self.jun_dic[sample]
-            out_path = f'{base_out_dir}/{i}'
-            cmd = cmd_template.format(chr1=chr1, bp1=bp1, chr2=chr2, bp2=bp2, jun_path=jun_path, out_path=out_path)
-            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-            out, err = p.communicate()
-            if p.returncode != 0:
-                print(f'[Error] return code: {p.returncode} for {sample} {chr1} {bp1} {chr2} {bp2}')
-                print(err)
-                continue
-            outs.append([out])
+        jobs = []
+        for i in range(parallel_num):
+            p = multiprocessing.Process(target=task, args=(i,))
+            jobs.append(p)
+            p.start()
+        for p in jobs:
+            p.join()
         print(f"{time.time() - start:.3f}[s]")
 
     def process_slow(self, data):
