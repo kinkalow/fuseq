@@ -8,7 +8,7 @@ def main():
     genomon = Genomon(opts)
     for mf_dir, mf_path in genomon.mf_dic.items():
         p = Preprocess(mf_dir, mf_path, genomon.jun_dic, opts)
-        data = p.create_target_list()
+        data = p.get_data()
         p.process(data)
 
 

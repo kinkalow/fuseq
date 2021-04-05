@@ -13,7 +13,7 @@ class Preprocess():
         self.out_dir = opts.out_dir
         #self._proc()
 
-    def create_target_list(self):
+    def get_data(self):
         chrs = list(map(lambda x: str(x), range(23))) + list('XY')
         data = []
         with open(self.mf_path, 'r') as f_mf:
@@ -50,17 +50,14 @@ out_path='{out_path}'
 
 [ -f "$out_path" ] && rm "$out_path"
 
-for readname in $(awk '{{
+for readname in $(cat "$jun_path" | awk '{{ \\
   if ( ($1 == "'$chr1'" && $2 == "'$bp1'" && $4 == "'$chr2'" && $5 == "'$bp2'") || \\
        ($1 == "'$chr2'" && $2 == "'$bp2'" && $4 == "'$chr1'" && $5 == "'$bp1'")    \\
-     ) print $0
-}}' "$jun_path" | cut -f 10); do
-  out=$(grep -e "^$readname" "$sam_path" | awk '{{ if ($9 == 0) print $0}}' | cut -f 10)
-  #echo ">$readname\\n$out"
-  echo ">$readname\\n$out" >> "$out_path"
+     ) print $0 }}' | cut -f 10); do
+    out=$(grep -e "^$readname" "$sam_path" | awk '{{ if ($9 == 0) print $10 }}')
+    echo ">$readname\\n$out" >> "$out_path"
 done
 '''
-
         outs = []
         import time
         start = time.time()
