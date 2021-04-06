@@ -1,5 +1,6 @@
 import os
 import subprocess
+import time
 import multiprocessing
 
 class Preprocess():
@@ -14,6 +15,7 @@ class Preprocess():
         self.out_base_dir = opts.out_base_dir
         self.parallel_num = opts.preprocess_parallel_num
         self.out_dir = f'{self.out_base_dir}/{self.mf_dir}/_work'
+        self.elpased_time = 0
         #self._proc()
 
     def get_data(self):
@@ -43,7 +45,7 @@ class Preprocess():
         data_num = line_cnt // parallel_num if line_cnt % parallel_num == 0 else line_cnt // parallel_num + 1
         heads = [i * data_num for i in range(parallel_num)] + [line_cnt]
 
-        def task(i_proc):
+        def task(i_proc, sender):
             cmd_template = '''\
 #!/bin/bash
 
@@ -67,7 +69,7 @@ for readname in $(cat "$jun_path" | awk '{{ \\
     echo ">$readname\\n$out" >> "$out_path"
 done
 '''
-            outs = []
+            results = []
             head = heads[i_proc]
             tail = heads[i_proc + 1]
             digit = len(str(parallel_num).split('.')[0])
@@ -75,67 +77,36 @@ done
             if os.path.exists(out_path):
                 os.remove(out_path)
 
-            for [sample, chr1, bp1, chr2, bp2] in data[head:tail]:
+            for step, [sample, chr1, bp1, chr2, bp2] in enumerate(data[head:tail]):
                 jun_path = self.jun_dic[sample]
                 cmd = cmd_template.format(chr1=chr1, bp1=bp1, chr2=chr2, bp2=bp2, jun_path=jun_path, out_path=out_path)
                 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
                 out, err = p.communicate()
-                if p.returncode != 0:
-                    print(f'[Error] return code: {p.returncode} for {sample} {chr1} {bp1} {chr2} {bp2}')
-                    print(err)
-                    continue
-                outs.append([out])
+                results.append([head + step + 1, p.returncode, out, err])
+            sender.send(results)
 
-        import time
-        start = time.time()
         jobs = []
+        pipes = []
         for i in range(parallel_num):
-            p = multiprocessing.Process(target=task, args=(i,))
-            jobs.append(p)
-            p.start()
-        for p in jobs:
-            p.join()
-        print(f"{time.time() - start:.3f}[s]")
+            receiver, sender = multiprocessing.Pipe(False)
+            mp = multiprocessing.Process(target=task, args=(i, sender))
+            jobs.append(mp)
+            pipes.append(receiver)
+            mp.start()
 
-    def process_slow(self, data):
-        # Extract readnames from junction file
-        for [sample, chr1, bp1, chr2, bp2] in data:
-            jun_dic = self.jun_dic[sample]
-            readnames = []
-            with open(jun_dic, 'r') as f_jun:
-                match = False
-                for row_jun in f_jun:
-                    r = row_jun.rstrip('\n').split('\t')
-                    if (r[0] == chr1 and r[1] == bp1 and r[3] == chr2 and r[4] == bp2) or \
-                       (r[3] == chr1 and r[4] == bp1 and r[0] == chr2 and r[1] == bp2):
-                        readnames.append(r[9])
-                        match = True
-                if not match:
-                    print(f'[Error] No data for {chr1} {bp1} {chr2} {bp2} in {jun_dic}')
-                    exit(1)
+        # run jobs
+        start = time.time()
+        for job in jobs:
+            job.join()
+        self.elpased_time = f'{time.time() - start}'
 
-            # Create data for blat input
-            path_sam = jun_dic[:-8] + 'sam'
-            results = []
-            with open(path_sam, 'r') as f_sam:
-                # Skip header lines
-                while True:
-                    pos = f_sam.tell()
-                    row = f_sam.readline()
-                    if row[0] != '@':
-                        break
-                # Alignment lines
-                for readname in readnames:
-                    f_sam.seek(pos)
-                    match = False
-                    for row_sam in f_sam:
-                        if row_sam.startswith(readname):
-                            r = row_sam.rstrip('\n').split('\t')
-                            if r[8] == '0':
-                                results.append([f'>{readname}\n{r[9]}'])
-                                match = True
-                    if not match:
-                        print(f'[Error] No data for {readname} in {path_sam}')
-                        exit(1)
-                print(results)
-                exit()
+        # results
+        has_err = False
+        for pipe in pipes:
+            results = pipe.recv()
+            for r in results:
+                if r[1] != 0:
+                    print(f'[Error] line:{r[0]}, rc:{r[1]}, out:{r[2].decode()}, err:{r[3].decode()}')
+                    has_err = True
+        if has_err:
+            exit(1)
