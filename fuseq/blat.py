@@ -1,13 +1,11 @@
 import os
 import subprocess
 import glob
-import time
 import multiprocessing
+import shutil
+from fuseq.timer import Timer
 
 class Blat():
-    """
-    Create input data for blat
-    """
 
     def __init__(self, mf_path, jun_dic, work_dir, opts):
         #self.mf_dir = mf_dir    # directory name containing merge_fusionfusion
@@ -16,12 +14,15 @@ class Blat():
         self.parallel_num = opts.preprocess_parallel_num
         self.work_dir = work_dir
         self.reference = opts.reference
-        self.elapsed_time = {'preprocess': 0, 'blat': 0, 'filter': 0}
-        self.files = {'preproc': 'preprocess', 'blat': 'blat.org', 'filter': 'blat'}
+        self.files = {'preproc': 'preprocess', 'blat': 'blat',
+                      'filt': 'filter', 'filtsome': 'filter_some', 'filtemp': 'filter_empty'}
+        self.time_preproc = Timer('Preprocess')
+        self.time_blat = Timer('Blat')
+        self.time_filter = Timer('Filter')
 
     def get_data(self):
         chrs = list(map(lambda x: str(x), range(23))) + list('XY')
-        data = []
+        breakinfo = []
         with open(self.mf_path, 'r') as f_mf:
             # Skip header line
             f_mf.readline()
@@ -34,14 +35,15 @@ class Blat():
                 [sample, chr1, bp1, strand1, chr2, bp2, strand2] = row_mf[0:7]
                 bp1 = str(int(bp1) + 1) if strand1 == '+' else str(int(bp1) - 1)
                 bp2 = str(int(bp2) + 1) if strand2 == '+' else str(int(bp2) - 1)
-                data.append([sample, chr1, bp1, chr2, bp2])
-        return data
+                breakinfo.append([sample, chr1, bp1, strand1, chr2, bp2, strand2])
+        return breakinfo
 
-    def preprocess(self, data):
+    def clear(self):
         for file in glob.glob(self.work_dir + '/*'):
             os.remove(file)
         os.makedirs(self.work_dir, exist_ok=True)
 
+    def preprocess(self, breakinfo):
         with open(self.mf_path, 'r') as f:
             line_cnt = sum([1 for _ in f])
         parallel_num = min(line_cnt, self.parallel_num)
@@ -67,7 +69,7 @@ for readname in $(cat "$jun_path" | awk '{{ \\
   if ( ($1 == "'$chr1'" && $2 == "'$bp1'" && $4 == "'$chr2'" && $5 == "'$bp2'") || \\
        ($1 == "'$chr2'" && $2 == "'$bp2'" && $4 == "'$chr1'" && $5 == "'$bp1'")    \\
      ) print $10 }}'); do
-    out=$(grep "^$readname" "$sam_path" | awk '{{ if ($9 == 0) print $10 }}')
+    out=$(grep "^$readname" "$sam_path" | awk '{{ if ($7 != "=" && $9 == 0 && $15 != "XS:A:+") print $10 }}')
     [ -z "$out" ] && continue
     cnt=$((cnt+1))
     echo ">$readname\\n$out" >> "$out_path"
@@ -82,7 +84,7 @@ echo -n "$cnt"
             if os.path.exists(out_path):
                 os.remove(out_path)
 
-            for step, [sample, chr1, bp1, chr2, bp2] in enumerate(data[head:tail]):
+            for step, [sample, chr1, bp1, strand1, chr2, bp2, strand2] in enumerate(breakinfo[head:tail]):
                 jun_path = self.jun_dic[sample]
                 cmd = cmd_template.format(chr1=chr1, bp1=bp1, chr2=chr2, bp2=bp2,
                                           jun_path=jun_path, out_path=out_path)
@@ -90,7 +92,9 @@ echo -n "$cnt"
                 out, err = p.communicate()
                 results.append({'line': head + step + 1, 'ret': p.returncode,
                                 'err': err.decode(), 'cnt': out.decode(),
-                                'sample': sample, 'chr1': chr1, 'bp1': bp1, 'chr2': chr2, 'bp2': bp2})
+                                'sample': sample,
+                                'chr1': chr1, 'bp1': bp1, 'strand1': strand1,
+                                'chr2': chr2, 'bp2': bp2, 'strand2': strand2})
             sender.send(results)
 
         jobs = []
@@ -103,13 +107,13 @@ echo -n "$cnt"
             mp.start()
 
         # run jobs
-        start = time.time()
+        self.time_preproc.start()
         for job in jobs:
             job.join()
-        self.elapsed_time['preprocess'] = f'{time.time() - start}'
+        self.time_preproc.end()
 
         # results
-        data = []
+        breakinfo = []
         has_err = False
         for pipe in pipes:
             results = pipe.recv()
@@ -119,11 +123,11 @@ echo -n "$cnt"
                     has_err = True
                 r.pop('ret')
                 r.pop('err')
-                data.append(r)
+                breakinfo.append(r)
         if has_err:
             exit(1)
 
-        return data
+        return breakinfo
 
     def cat(self):
         cmd = '''\
@@ -148,36 +152,209 @@ blat -noHead {reference} {inp_file} {out_file}
 '''.format(work_dir=self.work_dir, reference=self.reference,
            inp_file=self.files['preproc'], out_file=self.files['blat'])
         p = subprocess.Popen(cmd, stderr=subprocess.PIPE, shell=True)
-        start = time.time()
+        self.time_blat.start()
         out, err = p.communicate()
         if p.returncode != 0:
             print('[Error] at blat runtime')
-        self.elapsed_time['blat'] = f'{time.time() - start}'
+        self.time_blat.end()
 
-    def filter(self, data):
-        import time
-        start = time.time()
+    # [1] bp1 and bp2 are in the range of Tstart and Tend
+    # [2] chr1 and chr2 are the same as Tname
+    # [3] No range if only one item satisfies both [1] and [2]
+    # [4] In the case of three or more items that satisfy [1] and [2]
+    #     when the range of [Qstart2,Qend2] is wider than that of [Qstart1,Qend1], [Qstart2,Qend2] is given priority
+    #     [Qstart1,Qend1] is not displayed
+    def blat_filter(self, breakinfo):
+        self.time_filter.start()
+
+        # Get read names
         cmd = '''\
 #!/bin/bash
 set -eu
 cd {work_dir}
-grep '^>' | {inp_file} |  sed -e 's/^>//'
+grep '^>' {inp_file} |  sed -e 's/^>//'
 '''.format(work_dir=self.work_dir, inp_file=self.files['preproc'])
-        p = subprocess.Popen(cmd, stderr=subprocess.PIPE, shell=True)
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         readnames, err = p.communicate()
         if p.returncode != 0:
             print('[Error] at grep runtime')
-        #for d in data:
-        #    sample = d['sample']
-        #    print(sample)
-        self.elapsed_time['filter'] = f'{time.time() - start}'
+            print(err)
+            exit(1)
+        readnames = readnames.decode().strip('\n').split('\n')
+
+        cnts = [int(d.get('cnt')) for d in breakinfo]
+        assert(len(readnames) == sum(cnts))
+
+        # Create a dictionary that points to the index of data containing chr and bp from the read name
+        i_rn = 0
+        rn2idx = dict()
+        for i, cnt in enumerate(cnts):
+            for _ in range(cnt):
+                rn2idx[readnames[i_rn]] = i
+                i_rn += 1
+
+        def update_chr_bp(i, d):
+            return d[i]['chr1'], d[i]['chr2'], int(d[i]['bp1']), int(d[i]['bp2'])
+
+        def write_to_file(fws, breakinfo, readname, seq, poses_filt):
+            chr1 = breakinfo['chr1']
+            bp1 = breakinfo['bp1']
+            strand1 = breakinfo['strand1']
+            chr2 = breakinfo['chr2']
+            bp2 = breakinfo['bp2']
+            strand2 = breakinfo['strand2']
+            mfline = breakinfo['line']
+            w1 = readname + '\n'
+            w2 = ' '.join((chr1, bp1, strand1, chr2, bp2, strand2, f'mfline={mfline}')) + '\n'
+            if poses_filt:
+                fw = fws[0]
+                w3 = ''
+                for s, e in poses_filt:
+                    w3 += ' ' * (s - 1) + seq[s - 1:e] + ' ' + str([s, e]).replace(' ', '') + '\n'
+            else:
+                fw = fws[1]
+                w3 = seq + '\n'
+            w = w1 + w2 + w3
+            fw.write(w + '\n')
+            #print(w, end='')
+            #print('-' * 126)
+
+        def do_filter(poses):
+            if len(poses) < 2:
+                return []
+
+            starts = [r[0] for r in poses]
+            idx_asc = sorted(range(len(starts)), key=lambda k: starts[k])
+            poses_asc = [poses[i] for i in idx_asc]  # poses[i] = (start, end)
+
+            cur_idx = 0
+            max_idx = len(idx_asc) - 1
+            results = [0] * len(idx_asc)  # if 0/1, unnecessary/necessary elements
+            while cur_idx < max_idx:
+                s, e = poses_asc[cur_idx]
+                # Extract a location with the same start position and the largest end position
+                for i in range(cur_idx + 1, max_idx + 1):
+                    if poses_asc[i][0] != s:
+                        i -= 1
+                        break
+                    if poses_asc[i][1] > e:
+                        e = poses_asc[i][1]
+                else:
+                    results[cur_idx] = 1
+                    break
+                results[i] = 1
+                # Find the next candidate
+                for i in range(i + 1, max_idx + 1):
+                    if poses_asc[i][1] > e:
+                        break
+                else:
+                    break
+                if i == max_idx:
+                    results[i] = 1
+                    break
+                cur_idx = i
+
+            poses_filt = [poses[i] for i, zero_or_one in enumerate(results) if zero_or_one == 1]
+            if len(poses_filt) < 2:
+                return []
+            return poses_filt
+
+        def filter_and_write(fws, breakinfo, readname, seq, poses):
+            poses_filt = do_filter(poses)
+            write_to_file(fws, breakinfo, readname, seq, poses_filt)
+            poses.clear()
+
+        def get_sequence(fr_preproc, cur_readname):
+            while True:
+                readname = fr_preproc.readline().rstrip('\n')[1:]
+                seq = fr_preproc.readline().rstrip('\n')
+                if readname == cur_readname:
+                    break
+            return seq
+
+        # File information
+        file_blat = f'{self.work_dir}/{self.files["blat"]}'
+        file_preproc = f'{self.work_dir}/{self.files["preproc"]}'
+        file_filt = f'{self.work_dir}/{self.files["filt"]}'
+        file_filtsome = f'{self.work_dir}/{self.files["filtsome"]}'
+        file_filtemp = f'{self.work_dir}/{self.files["filtemp"]}'
+        # Initial value
+        cur_idx = 0
+        chr1, chr2, bp1, bp2 = update_chr_bp(0, breakinfo)
+        with open(file_blat, 'r') as fr_blat:
+            cur_readname = fr_blat.readline().rstrip('\n').split('\t')[9]
+        with open(file_preproc, 'r') as fr_preproc:
+            cur_seq = get_sequence(fr_preproc, cur_readname)
+        # Open
+        fr_preproc = open(file_preproc, 'r')
+        fr_blat = open(file_blat, 'r')
+        fw_filtsome = open(file_filtsome, 'w')
+        fw_filtemp = open(file_filtemp, 'w')
+        fw_filts = [fw_filtsome, fw_filtemp]
+        # Filter and write
+        poses = []
+        for row in fr_blat:
+            s = row.rstrip('\n').split('\t')
+            readname = s[9]             # qname
+            pos_start = int(s[11]) + 1  # qstart
+            pos_end = int(s[12])        # qend
+            chr = s[13]                 # tname
+            bp_start = int(s[15])       # tstart
+            bp_end = int(s[16])         # tend
+            if readname != cur_readname:
+                # Write one read
+                filter_and_write(fw_filts, breakinfo[cur_idx], cur_readname, cur_seq, poses)
+                # Next target
+                cur_readname = readname
+                cur_seq = get_sequence(fr_preproc, cur_readname)
+                if rn2idx[readname] != cur_idx:
+                    chr1, chr2, bp1, bp2 = update_chr_bp(rn2idx[readname], breakinfo)
+                    cur_idx = rn2idx[readname]
+            # Filter based on chr and bp ranges
+            if (chr == chr1 and bp_start <= bp1 <= bp_end) or \
+               (chr == chr2 and bp_start <= bp2 <= bp_end):
+                poses.append((pos_start, pos_end))
+        # Write the last read
+        filter_and_write(fw_filts, breakinfo[cur_idx], cur_readname, cur_seq, poses)
+        # Close
+        fr_preproc.close()
+        fr_blat.close()
+        fw_filtsome.close()
+        fw_filtemp.close()
+
+        # Concat filtsome and filtemp
+        filtsome_exists = os.path.exists(file_filtsome)
+        filtemp_exists = os.path.exists(file_filtemp)
+        if filtsome_exists and filtemp_exists:
+            cmd = '''\
+#!/bin/bash
+set -eu
+cd {work_dir}
+cat {filtsome} {filtemp} > {filt}
+rm {filtsome} {filtemp}
+'''.format(work_dir=self.work_dir, filt=file_filt, filtsome=file_filtsome, filtemp=file_filtemp)
+            p = subprocess.Popen(cmd, stderr=subprocess.PIPE, shell=True)
+            _, err = p.communicate()
+            if p.returncode != 0:
+                print('[Error] at filter runtime')
+                print(err)
+                exit(1)
+        elif filtsome_exists:
+            shutil.move(file_filtsome, file_filt)
+        elif filtemp_exists:
+            shutil.move(file_filtemp, file_filt)
+
+        self.time_filter.end()
 
     def run(self):
-        data = self.get_data()
-        data = self.preprocess(data)
-        print(f'Preprocess elapsed time: {float(self.elapsed_time["preprocess"]):.3f} [s]')
+        breakinfo = self.get_data()
+        self.clear()
+        breakinfo = self.preprocess(breakinfo)
+        self.time_preproc.print()
         self.cat()
+
         self.blat()
-        print(f'Blat elapsed time: {float(self.elapsed_time["blat"]):.3f} [s]')
-        self.filter(data)
-        print(f'Filter elapsed time: {float(self.elapsed_time["filter"]):.3f} [s]')
+        self.time_blat.print()
+        #breakinfo = [{'line': 1, 'cnt': '4', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '2', 'bp1': '216261859', 'strand1': '-', 'chr2': '9', 'bp2': '131833825', 'strand2': '+'}, {'line': 2, 'cnt': '20', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '3', 'bp1': '197592293', 'strand1': '-', 'chr2': '3', 'bp2': '197602647', 'strand2': '+'}, {'line': 3, 'cnt': '69', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '1', 'bp1': '110464617', 'strand1': '+', 'chr2': '2', 'bp2': '216259443', 'strand2': '+'}, {'line': 4, 'cnt': '6', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '1', 'bp1': '219366423', 'strand1': '-', 'chr2': '1', 'bp2': '219414651', 'strand2': '+'}, {'line': 5, 'cnt': '4', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '12', 'bp1': '29492783', 'strand1': '-', 'chr2': '12', 'bp2': '29494152', 'strand2': '+'}, {'line': 6, 'cnt': '6', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '14', 'bp1': '22111807', 'strand1': '+', 'chr2': '14', 'bp2': '22977590', 'strand2': '-'}, {'line': 7, 'cnt': '5', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '12', 'bp1': '29492783', 'strand1': '-', 'chr2': '12', 'bp2': '29494750', 'strand2': '+'}]
+        self.blat_filter(breakinfo)
+        self.time_filter.print()
