@@ -1,13 +1,12 @@
 import os
 import subprocess
-import glob
 import multiprocessing
 import shutil
 from fuseq.timer import Timer
 
 class Blat():
 
-    def __init__(self, mf_path, jun_dic, work_dir, opts):
+    def __init__(self, mf_path, jun_dic, work_dir, fuseq_path, opts):
         #self.mf_dir = mf_dir    # directory name containing merge_fusionfusion
         self.mf_path = mf_path  # merge_fusionfusion path
         self.jun_dic = jun_dic  # {directory name containing junction file, junction path}
@@ -15,7 +14,8 @@ class Blat():
         self.work_dir = work_dir
         self.reference = opts.reference
         self.files = {'preproc': 'preprocess', 'blat': 'blat',
-                      'filt': 'filter', 'filtsome': 'filter_some', 'filtemp': 'filter_empty'}
+                      'filtsome': 'filter_some', 'filtemp': 'filter_empty',
+                      'fuseq': fuseq_path}
         self.time_preproc = Timer('Preprocess')
         self.time_blat = Timer('Blat')
         self.time_filter = Timer('Filter')
@@ -38,10 +38,10 @@ class Blat():
                 breakinfo.append([sample, chr1, bp1, strand1, chr2, bp2, strand2])
         return breakinfo
 
-    def clear(self):
-        for file in glob.glob(self.work_dir + '/*'):
-            os.remove(file)
-        os.makedirs(self.work_dir, exist_ok=True)
+    def clear_work_dir(self, make_work_dir=False):
+        shutil.rmtree(self.work_dir, ignore_errors=True)
+        if make_work_dir:
+            os.makedirs(self.work_dir)
 
     def preprocess(self, breakinfo):
         with open(self.mf_path, 'r') as f:
@@ -96,27 +96,22 @@ echo -n "$cnt"
                                 'chr1': chr1, 'bp1': bp1, 'strand1': strand1,
                                 'chr2': chr2, 'bp2': bp2, 'strand2': strand2})
             sender.send(results)
+            sender.close()
 
         jobs = []
         pipes = []
         for i in range(parallel_num):
             receiver, sender = multiprocessing.Pipe(False)
-            mp = multiprocessing.Process(target=task, args=(i, sender))
-            jobs.append(mp)
+            p = multiprocessing.Process(target=task, args=(i, sender))
+            jobs.append(p)
             pipes.append(receiver)
-            mp.start()
-
-        # run jobs
-        self.time_preproc.start()
-        for job in jobs:
-            job.join()
-        self.time_preproc.end()
+            p.start()
 
         # results
         breakinfo = []
         has_err = False
         for pipe in pipes:
-            results = pipe.recv()
+            results = pipe.recv()  # Wait for the results to be sent
             for r in results:
                 if r['ret'] != 0 or len(r['err']) != 0 or not r['cnt'].isdecimal():
                     print(f'[Error] {str(r)}')
@@ -124,6 +119,10 @@ echo -n "$cnt"
                 r.pop('ret')
                 r.pop('err')
                 breakinfo.append(r)
+
+        for job in jobs:
+            job.join()
+
         if has_err:
             exit(1)
 
@@ -152,11 +151,9 @@ blat -noHead {reference} {inp_file} {out_file}
 '''.format(work_dir=self.work_dir, reference=self.reference,
            inp_file=self.files['preproc'], out_file=self.files['blat'])
         p = subprocess.Popen(cmd, stderr=subprocess.PIPE, shell=True)
-        self.time_blat.start()
         out, err = p.communicate()
         if p.returncode != 0:
             print('[Error] at blat runtime')
-        self.time_blat.end()
 
     # [1] bp1 and bp2 are in the range of Tstart and Tend
     # [2] chr1 and chr2 are the same as Tname
@@ -165,8 +162,6 @@ blat -noHead {reference} {inp_file} {out_file}
     #     when the range of [Qstart2,Qend2] is wider than that of [Qstart1,Qend1], [Qstart2,Qend2] is given priority
     #     [Qstart1,Qend1] is not displayed
     def blat_filter(self, breakinfo):
-        self.time_filter.start()
-
         # Get read names
         cmd = '''\
 #!/bin/bash
@@ -219,7 +214,8 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
             #print(w, end='')
             #print('-' * 126)
 
-        def do_filter(poses):
+        # Filter base on qstat-qend range
+        def pos_filter(poses):
             if len(poses) < 2:
                 return []
 
@@ -260,62 +256,60 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
             return poses_filt
 
         def filter_and_write(fws, breakinfo, readname, seq, poses):
-            poses_filt = do_filter(poses)
+            poses_filt = pos_filter(poses)
             write_to_file(fws, breakinfo, readname, seq, poses_filt)
             poses.clear()
-
-        def get_sequence(fr_preproc, cur_readname):
-            while True:
-                readname = fr_preproc.readline().rstrip('\n')[1:]
-                seq = fr_preproc.readline().rstrip('\n')
-                if readname == cur_readname:
-                    break
-            return seq
 
         # File information
         file_blat = f'{self.work_dir}/{self.files["blat"]}'
         file_preproc = f'{self.work_dir}/{self.files["preproc"]}'
-        file_filt = f'{self.work_dir}/{self.files["filt"]}'
         file_filtsome = f'{self.work_dir}/{self.files["filtsome"]}'
         file_filtemp = f'{self.work_dir}/{self.files["filtemp"]}'
-        # Initial value
-        cur_idx = 0
-        chr1, chr2, bp1, bp2 = update_chr_bp(0, breakinfo)
-        with open(file_blat, 'r') as fr_blat:
-            cur_readname = fr_blat.readline().rstrip('\n').split('\t')[9]
-        with open(file_preproc, 'r') as fr_preproc:
-            cur_seq = get_sequence(fr_preproc, cur_readname)
+        file_fuseq = self.files['fuseq']
+
         # Open
         fr_preproc = open(file_preproc, 'r')
         fr_blat = open(file_blat, 'r')
         fw_filtsome = open(file_filtsome, 'w')
         fw_filtemp = open(file_filtemp, 'w')
         fw_filts = [fw_filtsome, fw_filtemp]
+
         # Filter and write
-        poses = []
-        for row in fr_blat:
-            s = row.rstrip('\n').split('\t')
-            readname = s[9]             # qname
-            pos_start = int(s[11]) + 1  # qstart
-            pos_end = int(s[12])        # qend
-            chr = s[13]                 # tname
-            bp_start = int(s[15])       # tstart
-            bp_end = int(s[16])         # tend
-            if readname != cur_readname:
-                # Write one read
-                filter_and_write(fw_filts, breakinfo[cur_idx], cur_readname, cur_seq, poses)
-                # Next target
-                cur_readname = readname
-                cur_seq = get_sequence(fr_preproc, cur_readname)
-                if rn2idx[readname] != cur_idx:
-                    chr1, chr2, bp1, bp2 = update_chr_bp(rn2idx[readname], breakinfo)
-                    cur_idx = rn2idx[readname]
-            # Filter based on chr and bp ranges
-            if (chr == chr1 and bp_start <= bp1 <= bp_end) or \
-               (chr == chr2 and bp_start <= bp2 <= bp_end):
-                poses.append((pos_start, pos_end))
-        # Write the last read
-        filter_and_write(fw_filts, breakinfo[cur_idx], cur_readname, cur_seq, poses)
+        is_current = True
+        for row in fr_preproc:
+            # Target read
+            cur_readname = row.rstrip('\n')[1:]
+            cur_seq = fr_preproc.readline().rstrip('\n')
+            cur_chr1, cur_chr2, cur_bp1, cur_bp2 = update_chr_bp(rn2idx[cur_readname], breakinfo)
+            cur_breakinfo = breakinfo[rn2idx[cur_readname]]
+
+            poses = []
+            while True:
+                if is_current:
+                    s = fr_blat.readline().rstrip('\n').split('\t')
+                    if s == ['']:
+                        break
+                    readname = s[9]             # qname
+                    pos_start = int(s[11]) + 1  # qstart
+                    pos_end = int(s[12])        # qend
+                    chr = s[13]                 # tname
+                    bp_start = int(s[15])       # tstart
+                    bp_end = int(s[16])         # tend
+                if readname == cur_readname:
+                    # Filter based on chr and tstart-tend range
+                    if (chr == cur_chr1 and bp_start <= cur_bp1 <= bp_end) or \
+                       (chr == cur_chr2 and bp_start <= cur_bp2 <= bp_end):
+                        poses.append((pos_start, pos_end))
+                    is_current = True
+                else:
+                    # Write one read
+                    filter_and_write(fw_filts, cur_breakinfo, cur_readname, cur_seq, poses)
+                    is_current = False
+                    break
+        if is_current:
+            # Write the remaining read
+            filter_and_write(fw_filts, cur_breakinfo, cur_readname, cur_seq, poses)
+
         # Close
         fr_preproc.close()
         fr_blat.close()
@@ -330,9 +324,8 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
 #!/bin/bash
 set -eu
 cd {work_dir}
-cat {filtsome} {filtemp} > {filt}
-rm {filtsome} {filtemp}
-'''.format(work_dir=self.work_dir, filt=file_filt, filtsome=file_filtsome, filtemp=file_filtemp)
+cat {filtsome} {filtemp} > {fuseq}
+'''.format(work_dir=self.work_dir, fuseq=file_fuseq, filtsome=file_filtsome, filtemp=file_filtemp)
             p = subprocess.Popen(cmd, stderr=subprocess.PIPE, shell=True)
             _, err = p.communicate()
             if p.returncode != 0:
@@ -340,21 +333,33 @@ rm {filtsome} {filtemp}
                 print(err)
                 exit(1)
         elif filtsome_exists:
-            shutil.move(file_filtsome, file_filt)
+            shutil.move(file_filtsome, file_fuseq)
         elif filtemp_exists:
-            shutil.move(file_filtemp, file_filt)
-
-        self.time_filter.end()
+            shutil.move(file_filtemp, file_fuseq)
 
     def run(self):
         breakinfo = self.get_data()
-        self.clear()
-        breakinfo = self.preprocess(breakinfo)
-        self.time_preproc.print()
-        self.cat()
+        self.clear_work_dir(True)
 
+        self.time_preproc.start()
+        breakinfo = self.preprocess(breakinfo)
+        self.cat()
+        self.time_preproc.print()
+
+        self.time_blat.start()
         self.blat()
         self.time_blat.print()
+
+        #import json
+        #with open(f'{self.work_dir}/breakinfo', 'w') as f:
+        #    json.dump(breakinfo, f)
+        #import json
+        #with open(f'{self.work_dir}/breakinfo') as f:
+        #    breakinfo = json.load(f)
         #breakinfo = [{'line': 1, 'cnt': '4', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '2', 'bp1': '216261859', 'strand1': '-', 'chr2': '9', 'bp2': '131833825', 'strand2': '+'}, {'line': 2, 'cnt': '20', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '3', 'bp1': '197592293', 'strand1': '-', 'chr2': '3', 'bp2': '197602647', 'strand2': '+'}, {'line': 3, 'cnt': '69', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '1', 'bp1': '110464617', 'strand1': '+', 'chr2': '2', 'bp2': '216259443', 'strand2': '+'}, {'line': 4, 'cnt': '6', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '1', 'bp1': '219366423', 'strand1': '-', 'chr2': '1', 'bp2': '219414651', 'strand2': '+'}, {'line': 5, 'cnt': '4', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '12', 'bp1': '29492783', 'strand1': '-', 'chr2': '12', 'bp2': '29494152', 'strand2': '+'}, {'line': 6, 'cnt': '6', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '14', 'bp1': '22111807', 'strand1': '+', 'chr2': '14', 'bp2': '22977590', 'strand2': '-'}, {'line': 7, 'cnt': '5', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '12', 'bp1': '29492783', 'strand1': '-', 'chr2': '12', 'bp2': '29494750', 'strand2': '+'}]
+
+        self.time_filter.start()
         self.blat_filter(breakinfo)
         self.time_filter.print()
+
+        self.clear_work_dir()

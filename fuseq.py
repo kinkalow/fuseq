@@ -9,8 +9,9 @@ def main():
     opts = Option().create()
     genomon = Genomon(opts)
     for mf_dir, mf_path in genomon.mf_dic.items():
-        work_dir = f'{opts.out_base_dir}/{mf_dir}/_work'
-        blat = Blat(mf_path, genomon.jun_dic, work_dir, opts)
+        work_dir = f'{opts.out_base_dir}/{mf_dir}/_fuseq_work'
+        fuseq_path = f'{opts.out_base_dir}/{mf_dir}/fusion_sequence.txt'
+        blat = Blat(mf_path, genomon.jun_dic, work_dir, fuseq_path, opts)
         blat.run()
 
 
