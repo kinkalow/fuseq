@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from fuseq.option import Option
 from fuseq.genomon import Genomon
 from fuseq.blat import Blat
@@ -15,5 +17,5 @@ def main():
         blat.run()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

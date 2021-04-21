@@ -69,10 +69,18 @@ for readname in $(cat "$jun_path" | awk '{{ \\
   if ( ($1 == "'$chr1'" && $2 == "'$bp1'" && $4 == "'$chr2'" && $5 == "'$bp2'") || \\
        ($1 == "'$chr2'" && $2 == "'$bp2'" && $4 == "'$chr1'" && $5 == "'$bp1'")    \\
      ) print $10 }}'); do
-    out=$(grep "^$readname" "$sam_path" | awk '{{ if ($7 != "=" && $9 == 0 && $15 != "XS:A:+") print $10 }}')
-    [ -z "$out" ] && continue
-    cnt=$((cnt+1))
-    echo ">$readname\\n$out" >> "$out_path"
+    seqs=$(grep "^$readname" "$sam_path" | awk '{{ if ($7 != "=" && $9 == 0 && $15 != "XS:A:+") print $10 }}')
+    [ -z "$seqs" ] && continue
+    num=$(echo "$seqs" | wc -l)
+    if [ "$num" -eq 1 ]; then
+      cnt=$((cnt+1))
+      printf ">$readname\\n$seqs\\n" >> "$out_path"
+    else
+      for seq in $seqs; do
+        cnt=$((cnt+1))
+        printf ">$readname\\n${{cnt}}_$seq\\n" >> "$out_path"
+      done
+    fi
 done
 echo -n "$cnt"
 '''
