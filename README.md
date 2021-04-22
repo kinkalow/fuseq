@@ -44,7 +44,7 @@ Its output format is at least 3 lines for each read as follows:
 
 ```
 readname
-chromesome1 breakpoint1 strand1 chromesome2 breakpoint2 strand2
+chromesomeA breakpointA strandA chromesomeB breakpointB strandB
 one or more lines of fusion sequences
 
 next readname
@@ -52,5 +52,17 @@ next readname
 ```
 
 Note that only when Genomon fusion sequence is also found in Blat, fusion sequence lines are displayed in multiple lines to show the break position.
+For example, the following shows a sequence on chromosome 9 (=chromosomeA) is fused to a sequence on chromosome 2 (=chromosomeB).
+The upper sequence is the information for chromosomeA and the lower sequence is the information for chromosomeB.
+
+```
+SOME_READNAME
+9 131833825 + 2 216261859 -
+GTTCTGCTGTGGCTCTGCCCTTTCCAGGTTGAGAGGCCTG
+                                    CCTGGGGTGGTGCTCCTCTCCCAGGAGACTGTGAGCACTCCAGTGTCAGGGTTTGCCTCCAGATGCAAGTTTGTTGGTGGAGACAATGGT
+<--- sequence for chromesomeA(=9) ----->
+                                    <--- sequence for chromesomeB(=2) ------------------------------------------------------->
+```
+
 A single-line sequence indicates that Genomon fusion sequence is not found in Blat candidates.
 The list found in Blat is displayed before the list not found.

@@ -146,9 +146,11 @@ cat {inp_files} > {out_file}
            inp_files=' '.join(map(str, range(self.parallel_num))),
            out_file=self.files['preproc'])
         p = subprocess.Popen(cmd, stderr=subprocess.PIPE, shell=True)
-        p.communicate()
+        _, err = p.communicate()
         if p.returncode != 0:
             print('[Error] at cat runtime')
+            print(err)
+            exit(1)
 
     def blat(self):
         cmd = '''\
@@ -159,9 +161,11 @@ blat -noHead {reference} {inp_file} {out_file}
 '''.format(work_dir=self.work_dir, reference=self.reference,
            inp_file=self.files['preproc'], out_file=self.files['blat'])
         p = subprocess.Popen(cmd, stderr=subprocess.PIPE, shell=True)
-        out, err = p.communicate()
+        _, err = p.communicate()
         if p.returncode != 0:
             print('[Error] at blat runtime')
+            print(err)
+            exit(1)
 
     # [1] bp1 and bp2 are in the range of Tstart and Tend
     # [2] chr1 and chr2 are the same as Tname
@@ -170,6 +174,7 @@ blat -noHead {reference} {inp_file} {out_file}
     #     when the range of [Qstart2,Qend2] is wider than that of [Qstart1,Qend1], [Qstart2,Qend2] is given priority
     #     [Qstart1,Qend1] is not displayed
     def blat_filter(self, breakinfo):
+
         # Get read names
         cmd = '''\
 #!/bin/bash
@@ -185,10 +190,11 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
             exit(1)
         readnames = readnames.decode().strip('\n').split('\n')
 
+        # Check
         cnts = [int(d.get('cnt')) for d in breakinfo]
         assert(len(readnames) == sum(cnts))
 
-        # Create a dictionary that points to the index of data containing chr and bp from the read name
+        # Create a dictionary with readname in key and breakinfo index in value
         i_rn = 0
         rn2idx = dict()
         for i, cnt in enumerate(cnts):
@@ -207,12 +213,13 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
             bp2 = breakinfo['bp2']
             strand2 = breakinfo['strand2']
             mfline = breakinfo['line']
+
             w1 = readname + '\n'
             w2 = ' '.join((chr1, bp1, strand1, chr2, bp2, strand2, f'mfline={mfline}')) + '\n'
             if poses_filt:
                 fw = fws[0]
                 w3 = ''
-                for s, e in poses_filt:
+                for s, e, _ in poses_filt:
                     w3 += ' ' * (s - 1) + seq[s - 1:e] + ' ' + str([s, e]).replace(' ', '') + '\n'
             else:
                 fw = fws[1]
@@ -229,13 +236,13 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
 
             starts = [r[0] for r in poses]
             idx_asc = sorted(range(len(starts)), key=lambda k: starts[k])
-            poses_asc = [poses[i] for i in idx_asc]  # poses[i] = (start, end)
+            poses_asc = [poses[i] for i in idx_asc]  # poses[i] = (start, end, one_or_two)
 
             cur_idx = 0
             max_idx = len(idx_asc) - 1
             results = [0] * len(idx_asc)  # if 0/1, unnecessary/necessary elements
             while cur_idx < max_idx:
-                s, e = poses_asc[cur_idx]
+                s, e, _ = poses_asc[cur_idx]
                 # Extract a location with the same start position and the largest end position
                 for i in range(cur_idx + 1, max_idx + 1):
                     if poses_asc[i][0] != s:
@@ -261,10 +268,47 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
             poses_filt = [poses[i] for i, zero_or_one in enumerate(results) if zero_or_one == 1]
             if len(poses_filt) < 2:
                 return []
+
             return poses_filt
+
+        def pos_sort(poses_filt, breakinfo):
+            if not poses_filt:
+                return poses_filt, breakinfo
+
+            # Check
+            one_or_two_list = [i for _, _, i in poses_filt]
+            if len(set(one_or_two_list)) != 2:
+                print('[Error] poses_filt has some problem')
+                print(poses_filt)
+                exit(1)
+
+            # Sort position and break information
+            # if one_or_two == 1, sequence1 is displayed first before sequence2
+            # if one_or_two == 2, sequence2 is displayed first before sequence1
+            starts = [s for s, _, _ in poses_filt]
+            idx_min = starts.index(min(starts))
+            is_one_first = True if poses_filt[idx_min][2] == 1 else False
+            if is_one_first:
+                idxes = [i for i, one_or_two in enumerate(one_or_two_list) if one_or_two == 1] + \
+                        [i for i, one_or_two in enumerate(one_or_two_list) if one_or_two == 2]
+            else:
+                idxes = [i for i, one_or_two in enumerate(one_or_two_list) if one_or_two == 2] + \
+                        [i for i, one_or_two in enumerate(one_or_two_list) if one_or_two == 1]
+            new_poses_filt = [poses_filt[idx] for idx in idxes]
+
+            if poses_filt[0][2] == 1:
+                new_breakinfo = breakinfo
+            else:  # Reverse
+                b = breakinfo.copy()
+                b['chr2'], b['bp2'], b['strand2'], b['chr1'], b['bp1'], b['strand1'] = \
+                b['chr1'], b['bp1'], b['strand1'], b['chr2'], b['bp2'], b['strand2']
+                new_breakinfo = b
+
+            return new_poses_filt, new_breakinfo
 
         def filter_and_write(fws, breakinfo, readname, seq, poses):
             poses_filt = pos_filter(poses)
+            poses_filt, breakinfo = pos_sort(poses_filt, breakinfo)
             write_to_file(fws, breakinfo, readname, seq, poses_filt)
             poses.clear()
 
@@ -295,7 +339,7 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
             while True:
                 if is_current:
                     s = fr_blat.readline().rstrip('\n').split('\t')
-                    if s == ['']:
+                    if s == ['']:  # Check if file pointer is last
                         break
                     readname = s[9]             # qname
                     pos_start = int(s[11]) + 1  # qstart
@@ -305,9 +349,10 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
                     bp_end = int(s[16])         # tend
                 if readname == cur_readname:
                     # Filter based on chr and tstart-tend range
-                    if (chr == cur_chr1 and bp_start <= cur_bp1 <= bp_end) or \
-                       (chr == cur_chr2 and bp_start <= cur_bp2 <= bp_end):
-                        poses.append((pos_start, pos_end))
+                    if chr == cur_chr1 and bp_start <= cur_bp1 <= bp_end:
+                        poses.append((pos_start, pos_end, 1))
+                    elif chr == cur_chr2 and bp_start <= cur_bp2 <= bp_end:
+                        poses.append((pos_start, pos_end, 2))
                     is_current = True
                 else:
                     # Write one read
