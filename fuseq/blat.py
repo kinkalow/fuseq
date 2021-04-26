@@ -71,16 +71,10 @@ for readname in $(cat "$jun_path" | awk '{{ \\
      ) print $10 }}'); do
     seqs=$(grep "^$readname" "$sam_path" | awk '{{ if ($7 != "=" && $9 == 0 && $15 != "XS:A:+") print $10 }}')
     [ -z "$seqs" ] && continue
-    num=$(echo "$seqs" | wc -l)
-    if [ "$num" -eq 1 ]; then
+    for seq in $seqs; do
       cnt=$((cnt+1))
-      printf ">$readname\\n$seqs\\n" >> "$out_path"
-    else
-      for seq in $seqs; do
-        cnt=$((cnt+1))
-        printf ">$readname\\n${{cnt}}_$seq\\n" >> "$out_path"
-      done
-    fi
+      printf ">{line}-${{cnt}}_$readname\\n$seq\\n" >> "$out_path"
+    done
 done
 echo -n "$cnt"
 '''
@@ -93,12 +87,13 @@ echo -n "$cnt"
                 os.remove(out_path)
 
             for step, [sample, chr1, bp1, strand1, chr2, bp2, strand2] in enumerate(breakinfo[head:tail]):
+                line = head + step + 1
                 jun_path = self.jun_dic[sample]
-                cmd = cmd_template.format(chr1=chr1, bp1=bp1, chr2=chr2, bp2=bp2,
+                cmd = cmd_template.format(line=line, chr1=chr1, bp1=bp1, chr2=chr2, bp2=bp2,
                                           jun_path=jun_path, out_path=out_path)
                 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
                 out, err = p.communicate()
-                results.append({'line': head + step + 1, 'ret': p.returncode,
+                results.append({'line': line, 'ret': p.returncode,
                                 'err': err.decode(), 'cnt': out.decode(),
                                 'sample': sample,
                                 'chr1': chr1, 'bp1': bp1, 'strand1': strand1,
@@ -213,6 +208,7 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
             bp2 = breakinfo['bp2']
             strand2 = breakinfo['strand2']
             mfline = breakinfo['line']
+            readname = readname[readname.index('_') + 1:]  # Remove the leading unique number
 
             w1 = readname + '\n'
             w2 = ' '.join((chr1, bp1, strand1, chr2, bp2, strand2, f'mfline={mfline}')) + '\n'
@@ -415,4 +411,4 @@ cat {filtsome} {filtemp} > {fuseq}
         self.blat_filter(breakinfo)
         self.time_filter.print()
 
-        self.clear_work_dir()
+        #self.clear_work_dir()
