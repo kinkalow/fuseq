@@ -11,7 +11,7 @@ shutil.copyfile('fuseq.py', f'{scripts_dir}/fuseq')
 setup(
     name='fuseq',
     version=__version__,
-    description='Fusion gene sequences are obtained',
+    description='Breakpoint information for fusion gene sequences obtained by Genomon',
     packages=['fuseq'],
     scripts=[f'{scripts_dir}/fuseq'],
     python_requires='>=3.6',

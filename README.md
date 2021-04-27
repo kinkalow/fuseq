@@ -1,8 +1,8 @@
 ## Fusion sequence
 
-fuseq is a command line tool that allows you to get breakpoint information for fusion gene sequences obtained by [Genomon](https://genomon-project.github.io/GenomonPagesR/).
-That breakpoint information can be obtained by [Blat](https://genome.ucsc.edu/cgi-bin/hgBlat).
-So, fuseq first examines the readnames and their sequences from the Genomon analysis results and passes them as input data for Blat.
+fuseq is a command line tool that provides breakpoint information for fusion gene sequences obtained by [Genomon](https://genomon-project.github.io/GenomonPagesR/).
+That breakpoints can be obtained by [Blat](https://genome.ucsc.edu/cgi-bin/hgBlat).
+So, fuseq first collects the readnames and their sequences from the Genomon analysis results and passes them as input data for Blat.
 Blat outputs multiple candidates, but fuseq only extracts candidates that match Genomon results and finally writes breakpoint information to a file.
 
 ### Requires

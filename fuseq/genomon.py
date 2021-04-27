@@ -4,7 +4,7 @@ from fuseq.checker import Checker
 
 class Genomon:
     def __init__(self, opts):
-        self.genomon_dir = opts.genomon_dir
+        self.genomon_root_dir = opts.genomon_root_dir
         self.use_filt = opts.use_filt
 
         self._mf_path = {}
@@ -17,7 +17,7 @@ class Genomon:
 
     def _create_mf_path(self):
         f = 'merge_fusionfusion_filt.txt' if self.use_filt else 'merge_fusionfusion.txt'
-        base = f'{self.genomon_dir}/post_analysis'
+        base = f'{self.genomon_root_dir}/post_analysis'
         Checker.isdir(base)
         for d in os.listdir(base):
             path = f'{base}/{d}/{f}'
@@ -27,7 +27,7 @@ class Genomon:
     def _create_jun_path(self):
         ext1 = '.junction'
         ext2 = '.sam'
-        base = f'{self.genomon_dir}/star'
+        base = f'{self.genomon_root_dir}/star'
         Checker.isdir(base)
         for d in os.listdir(base):
             li = glob.glob(f'{base}/{d}/*{ext1}')

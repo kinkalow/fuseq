@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import multiprocessing
@@ -7,16 +8,18 @@ from fuseq.timer import Timer
 class Blat():
 
     def __init__(self, mf_path, jun_dic, work_dir, fuseq_path, opts):
-        #self.mf_dir = mf_dir    # directory name containing merge_fusionfusion
         self.mf_path = mf_path  # merge_fusionfusion path
-        self.jun_dic = jun_dic  # {directory name containing junction file, junction path}
-        self.parallel_num = opts.preprocess_parallel_num
+        self.jun_dic = jun_dic  # {directory name containing junction file, junction full path}
         self.work_dir = work_dir
-        self.reference = opts.reference
-        self.files = {'preproc': 'preprocess', 'blat': 'blat',
-                      'filtsome': 'filter_some', 'filtemp': 'filter_empty',
-                      'fuseq': fuseq_path}
-        self.time_preproc = Timer('Preprocess')
+        self.fuseq_path = fuseq_path
+        self.opts = opts
+        # File names / Full path
+        self.files = {'coll': 'collect', 'breakinfo': 'breakinfo', 'blat': 'blat',
+                      'filtsome': 'filter_some', 'filtemp': 'filter_empty'}
+        self.breakinfo_path = f'{self.work_dir}/{self.files["breakinfo"]}'
+        # Timer
+        self.print_time = True
+        self.time_coll = Timer('Collection')
         self.time_blat = Timer('Blat')
         self.time_filter = Timer('Filter')
 
@@ -38,17 +41,20 @@ class Blat():
                 breakinfo.append([sample, chr1, bp1, strand1, chr2, bp2, strand2])
         return breakinfo
 
-    def clear_work_dir(self, make_work_dir=False):
+    def delete_work_dir(self, make_work_dir=False):
         shutil.rmtree(self.work_dir, ignore_errors=True)
         if make_work_dir:
             os.makedirs(self.work_dir)
 
-    def preprocess(self, breakinfo):
+    def collect(self, breakinfo):
+        """Collect data for Blat input"""
+        self.time_coll.start()
+
         with open(self.mf_path, 'r') as f:
             line_cnt = sum([1 for _ in f])
-        parallel_num = min(line_cnt, self.parallel_num)
-        data_num = line_cnt // parallel_num if line_cnt % parallel_num == 0 else line_cnt // parallel_num + 1
-        heads = [i * data_num for i in range(parallel_num)] + [line_cnt]
+        coll_procs = min(line_cnt, self.opts.coll_procs)
+        data_num = line_cnt // coll_procs if line_cnt % coll_procs == 0 else line_cnt // coll_procs + 1
+        heads = [i * data_num for i in range(coll_procs)] + [line_cnt]
 
         def task(i_proc, sender):
             cmd_template = '''\
@@ -81,7 +87,7 @@ echo -n "$cnt"
             results = []
             head = heads[i_proc]
             tail = heads[i_proc + 1]
-            digit = len(str(parallel_num).split('.')[0])
+            digit = len(str(coll_procs).split('.')[0])
             out_path = f'{self.work_dir}/{str(i_proc).zfill(digit)}'
             if os.path.exists(out_path):
                 os.remove(out_path)
@@ -103,7 +109,7 @@ echo -n "$cnt"
 
         jobs = []
         pipes = []
-        for i in range(parallel_num):
+        for i in range(coll_procs):
             receiver, sender = multiprocessing.Pipe(False)
             p = multiprocessing.Process(target=task, args=(i, sender))
             jobs.append(p)
@@ -129,6 +135,13 @@ echo -n "$cnt"
         if has_err:
             exit(1)
 
+        with open(self.breakinfo_path, 'w') as f:
+            json.dump(breakinfo, f)
+
+        self.time_coll.end()
+        if self.print_time:
+            self.time_coll.print()
+
         return breakinfo
 
     def cat(self):
@@ -138,8 +151,8 @@ set -eu
 cd {work_dir}
 cat {inp_files} > {out_file}
 '''.format(work_dir=self.work_dir,
-           inp_files=' '.join(map(str, range(self.parallel_num))),
-           out_file=self.files['preproc'])
+           inp_files=' '.join(map(str, range(self.opts.coll_procs))),
+           out_file=os.path.basename(self.files['coll']))
         p = subprocess.Popen(cmd, stderr=subprocess.PIPE, shell=True)
         _, err = p.communicate()
         if p.returncode != 0:
@@ -148,19 +161,26 @@ cat {inp_files} > {out_file}
             exit(1)
 
     def blat(self):
+        self.time_blat.start()
+
         cmd = '''\
 #!/bin/bash
 set -eu
 cd {work_dir}
-blat -noHead {reference} {inp_file} {out_file}
-'''.format(work_dir=self.work_dir, reference=self.reference,
-           inp_file=self.files['preproc'], out_file=self.files['blat'])
+blat {blat_opt} -noHead {reference} {inp_file} {out_file}
+#blat -noHead {reference} {inp_file} {out_file}
+'''.format(work_dir=self.work_dir, blat_opt=self.opts.blat_opt, reference=self.opts.reference,
+           inp_file=self.files['coll'], out_file=self.files['blat'])
         p = subprocess.Popen(cmd, stderr=subprocess.PIPE, shell=True)
         _, err = p.communicate()
         if p.returncode != 0:
             print('[Error] at blat runtime')
             print(err)
             exit(1)
+
+        self.time_blat.end()
+        if self.print_time:
+            self.time_blat.print()
 
     # [1] bp1 and bp2 are in the range of Tstart and Tend
     # [2] chr1 and chr2 are the same as Tname
@@ -169,6 +189,7 @@ blat -noHead {reference} {inp_file} {out_file}
     #     when the range of [Qstart2,Qend2] is wider than that of [Qstart1,Qend1], [Qstart2,Qend2] is given priority
     #     [Qstart1,Qend1] is not displayed
     def blat_filter(self, breakinfo):
+        self.time_filter.start()
 
         # Get read names
         cmd = '''\
@@ -176,7 +197,7 @@ blat -noHead {reference} {inp_file} {out_file}
 set -eu
 cd {work_dir}
 grep '^>' {inp_file} |  sed -e 's/^>//'
-'''.format(work_dir=self.work_dir, inp_file=self.files['preproc'])
+'''.format(work_dir=self.work_dir, inp_file=self.files['coll'])
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         readnames, err = p.communicate()
         if p.returncode != 0:
@@ -200,7 +221,7 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
         def update_chr_bp(i, d):
             return d[i]['chr1'], d[i]['chr2'], int(d[i]['bp1']), int(d[i]['bp2'])
 
-        def write_to_file(fws, breakinfo, readname, seq, poses_filt):
+        def write_to_file(fws, breakinfo, readname, seq, poses_filt, other_info):
             chr1 = breakinfo['chr1']
             bp1 = breakinfo['bp1']
             strand1 = breakinfo['strand1']
@@ -221,6 +242,7 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
                 fw = fws[1]
                 w3 = seq + '\n'
             w = w1 + w2 + w3
+            #w += str(other_info) + '\n'
             fw.write(w + '\n')
             #print(w, end='')
             #print('-' * 126)
@@ -302,24 +324,24 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
 
             return new_poses_filt, new_breakinfo
 
-        def filter_and_write(fws, breakinfo, readname, seq, poses):
+        def filter_and_write(fws, breakinfo, readname, seq, poses, other_info):
             poses_filt = pos_filter(poses)
             poses_filt, breakinfo = pos_sort(poses_filt, breakinfo)
-            write_to_file(fws, breakinfo, readname, seq, poses_filt)
+            write_to_file(fws, breakinfo, readname, seq, poses_filt, other_info)
             poses.clear()
 
-        # File information
-        file_blat = f'{self.work_dir}/{self.files["blat"]}'
-        file_preproc = f'{self.work_dir}/{self.files["preproc"]}'
-        file_filtsome = f'{self.work_dir}/{self.files["filtsome"]}'
-        file_filtemp = f'{self.work_dir}/{self.files["filtemp"]}'
-        file_fuseq = self.files['fuseq']
+        # Full path
+        blat_path = f'{self.work_dir}/{self.files["blat"]}'
+        coll_path = f'{self.work_dir}/{self.files["coll"]}'
+        filtsome_path = f'{self.work_dir}/{self.files["filtsome"]}'
+        filtemp_path = f'{self.work_dir}/{self.files["filtemp"]}'
+        fuseq_path = self.fuseq_path
 
         # Open
-        fr_preproc = open(file_preproc, 'r')
-        fr_blat = open(file_blat, 'r')
-        fw_filtsome = open(file_filtsome, 'w')
-        fw_filtemp = open(file_filtemp, 'w')
+        fr_preproc = open(coll_path, 'r')
+        fr_blat = open(blat_path, 'r')
+        fw_filtsome = open(filtsome_path, 'w')
+        fw_filtemp = open(filtemp_path, 'w')
         fw_filts = [fw_filtsome, fw_filtemp]
 
         # Filter and write
@@ -332,6 +354,7 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
             cur_breakinfo = breakinfo[rn2idx[cur_readname]]
 
             poses = []
+            other_info = []
             while True:
                 if is_current:
                     s = fr_blat.readline().rstrip('\n').split('\t')
@@ -342,22 +365,27 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
                     pos_end = int(s[12])        # qend
                     chr = s[13]                 # tname
                     bp_start = int(s[15])       # tstart
-                    bp_end = int(s[16])         # tend
+                    bp_end = int(s[16]) + 1     # tend ... NOTE: +1 increases the number of matches to Genomon results
+                    assert(bp_start <= bp_end)
                 if readname == cur_readname:
                     # Filter based on chr and tstart-tend range
                     if chr == cur_chr1 and bp_start <= cur_bp1 <= bp_end:
                         poses.append((pos_start, pos_end, 1))
                     elif chr == cur_chr2 and bp_start <= cur_bp2 <= bp_end:
                         poses.append((pos_start, pos_end, 2))
+                    if chr == cur_chr1:
+                        other_info.append((bp_start, bp_end, 1))
+                    elif chr == cur_chr2:
+                        other_info.append((bp_start, bp_end, 2))
                     is_current = True
                 else:
                     # Write one read
-                    filter_and_write(fw_filts, cur_breakinfo, cur_readname, cur_seq, poses)
+                    filter_and_write(fw_filts, cur_breakinfo, cur_readname, cur_seq, poses, other_info)
                     is_current = False
                     break
         if is_current:
             # Write the remaining read
-            filter_and_write(fw_filts, cur_breakinfo, cur_readname, cur_seq, poses)
+            filter_and_write(fw_filts, cur_breakinfo, cur_readname, cur_seq, poses, other_info)
 
         # Close
         fr_preproc.close()
@@ -366,15 +394,15 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
         fw_filtemp.close()
 
         # Concat filtsome and filtemp
-        filtsome_exists = os.path.exists(file_filtsome)
-        filtemp_exists = os.path.exists(file_filtemp)
+        filtsome_exists = os.path.exists(filtsome_path)
+        filtemp_exists = os.path.exists(filtemp_path)
         if filtsome_exists and filtemp_exists:
             cmd = '''\
 #!/bin/bash
 set -eu
 cd {work_dir}
 cat {filtsome} {filtemp} > {fuseq}
-'''.format(work_dir=self.work_dir, fuseq=file_fuseq, filtsome=file_filtsome, filtemp=file_filtemp)
+'''.format(work_dir=self.work_dir, fuseq=fuseq_path, filtsome=filtsome_path, filtemp=filtemp_path)
             p = subprocess.Popen(cmd, stderr=subprocess.PIPE, shell=True)
             _, err = p.communicate()
             if p.returncode != 0:
@@ -382,33 +410,31 @@ cat {filtsome} {filtemp} > {fuseq}
                 print(err)
                 exit(1)
         elif filtsome_exists:
-            shutil.move(file_filtsome, file_fuseq)
+            shutil.move(filtsome_path, fuseq_path)
         elif filtemp_exists:
-            shutil.move(file_filtemp, file_fuseq)
+            shutil.move(filtemp_path, fuseq_path)
+
+        self.time_filter.end()
+        if self.print_time:
+            self.time_filter.print()
 
     def run(self):
         breakinfo = self.get_data()
-        self.clear_work_dir(True)
-
-        self.time_preproc.start()
-        breakinfo = self.preprocess(breakinfo)
+        self.delete_work_dir(True)
+        breakinfo = self.collect(breakinfo)
         self.cat()
-        self.time_preproc.print()
-
-        self.time_blat.start()
         self.blat()
-        self.time_blat.print()
-
-        #import json
-        #with open(f'{self.work_dir}/breakinfo', 'w') as f:
-        #    json.dump(breakinfo, f)
-        #import json
-        #with open(f'{self.work_dir}/breakinfo') as f:
-        #    breakinfo = json.load(f)
-        #breakinfo = [{'line': 1, 'cnt': '4', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '2', 'bp1': '216261859', 'strand1': '-', 'chr2': '9', 'bp2': '131833825', 'strand2': '+'}, {'line': 2, 'cnt': '20', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '3', 'bp1': '197592293', 'strand1': '-', 'chr2': '3', 'bp2': '197602647', 'strand2': '+'}, {'line': 3, 'cnt': '69', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '1', 'bp1': '110464617', 'strand1': '+', 'chr2': '2', 'bp2': '216259443', 'strand2': '+'}, {'line': 4, 'cnt': '6', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '1', 'bp1': '219366423', 'strand1': '-', 'chr2': '1', 'bp2': '219414651', 'strand2': '+'}, {'line': 5, 'cnt': '4', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '12', 'bp1': '29492783', 'strand1': '-', 'chr2': '12', 'bp2': '29494152', 'strand2': '+'}, {'line': 6, 'cnt': '6', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '14', 'bp1': '22111807', 'strand1': '+', 'chr2': '14', 'bp2': '22977590', 'strand2': '-'}, {'line': 7, 'cnt': '5', 'sample': 'RNA_PVS-CC001-01_20160520_01', 'chr1': '12', 'bp1': '29492783', 'strand1': '-', 'chr2': '12', 'bp2': '29494750', 'strand2': '+'}]
-
-        self.time_filter.start()
         self.blat_filter(breakinfo)
-        self.time_filter.print()
+        if self.opts.no_delete_work:
+            self.delete_work_dir()
 
-        #self.clear_work_dir()
+    def restart_from_blat(self):
+        with open(self.breakinfo_path) as f:
+            breakinfo = json.load(f)
+        self.blat()
+        self.blat_filter(breakinfo)
+
+    def restart_from_filter(self):
+        with open(self.breakinfo_path) as f:
+            breakinfo = json.load(f)
+        self.blat_filter(breakinfo)

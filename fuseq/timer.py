@@ -17,4 +17,4 @@ class Timer:
             print('[Error] start method is not called')
             return
         end = self._end if self._end else time.time()
-        print(f'{self.name} elapased time: {end-self._start:.3f}[s]')
+        print(f'[Info] {self.name} elapased time: {end-self._start:.3f}[s]')
