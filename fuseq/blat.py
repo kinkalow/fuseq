@@ -4,17 +4,20 @@ import subprocess
 import multiprocessing
 import shutil
 from fuseq.timer import Timer
+from fuseq.checker import Checker
 
 class Blat():
 
-    def __init__(self, mf_path, jun_dic, work_dir, fuseq_path, opts):
+    def __init__(self, mf_path, jun_dic, work_dir, fuseq_path, params):
         self.mf_path = mf_path  # merge_fusionfusion path
-        self.jun_dic = jun_dic  # {directory name containing junction file, junction full path}
+        self.jun_dic = jun_dic  # jun_dic = {directory name containing junction file, full path of junction file}
         self.work_dir = work_dir
         self.fuseq_path = fuseq_path
-        self.opts = opts
+        # Parameters
+        self.params = params
         # File names / Full path
-        self.files = {'coll': 'collect', 'breakinfo': 'breakinfo', 'blat': 'blat',
+        self.files = {'params': 'params', 'coll': 'collect',
+                      'breakinfo': 'breakinfo', 'blat': 'blat',
                       'filtsome': 'filter_some', 'filtemp': 'filter_empty'}
         self.breakinfo_path = f'{self.work_dir}/{self.files["breakinfo"]}'
         # Timer
@@ -23,7 +26,39 @@ class Blat():
         self.time_blat = Timer('Blat')
         self.time_filter = Timer('Filter')
 
-    def get_data(self):
+    #
+    # Utility
+    #
+
+    def save_params(self):
+        path = f'{self.work_dir}/{self.files["params"]}'
+        with open(path, 'w') as f:
+            d = vars(self.params)
+            max_len = max([len(k) for k in d.keys()])
+            for key, val in sorted(d.items(), key=lambda x: x[0]):
+                space = ' ' * (max_len - len(key))
+                f.write(f'{key}{space}: {val}\n')
+
+    def save_breakinfo(self, breakinfo):
+        with open(self.breakinfo_path, 'w') as f:
+            json.dump(breakinfo, f)
+
+    def load_breakinfo(self):
+        Checker.isfile(self.breakinfo_path)
+        with open(self.breakinfo_path) as f:
+            breakinfo = json.load(f)
+        return breakinfo
+
+    def delete_work_dir(self, make_work_dir=False):
+        shutil.rmtree(self.work_dir, ignore_errors=True)
+        if make_work_dir:
+            os.makedirs(self.work_dir)
+
+    #
+    # Main processing functions
+    #
+
+    def get_breakinfo(self):
         chrs = list(map(lambda x: str(x), range(23))) + list('XY')
         breakinfo = []
         with open(self.mf_path, 'r') as f_mf:
@@ -41,18 +76,13 @@ class Blat():
                 breakinfo.append([sample, chr1, bp1, strand1, chr2, bp2, strand2])
         return breakinfo
 
-    def delete_work_dir(self, make_work_dir=False):
-        shutil.rmtree(self.work_dir, ignore_errors=True)
-        if make_work_dir:
-            os.makedirs(self.work_dir)
-
     def collect(self, breakinfo):
         """Collect data for Blat input"""
         self.time_coll.start()
 
         with open(self.mf_path, 'r') as f:
             line_cnt = sum([1 for _ in f])
-        coll_procs = min(line_cnt, self.opts.coll_procs)
+        coll_procs = min(line_cnt, self.params.coll_procs)
         data_num = line_cnt // coll_procs if line_cnt % coll_procs == 0 else line_cnt // coll_procs + 1
         heads = [i * data_num for i in range(coll_procs)] + [line_cnt]
 
@@ -135,23 +165,20 @@ echo -n "$cnt"
         if has_err:
             exit(1)
 
-        with open(self.breakinfo_path, 'w') as f:
-            json.dump(breakinfo, f)
-
         self.time_coll.end()
         if self.print_time:
             self.time_coll.print()
 
         return breakinfo
 
-    def cat(self):
+    def concat(self):
         cmd = '''\
 #!/bin/bash
 set -eu
 cd {work_dir}
 cat {inp_files} > {out_file}
 '''.format(work_dir=self.work_dir,
-           inp_files=' '.join(map(str, range(self.opts.coll_procs))),
+           inp_files=' '.join(map(str, range(self.params.coll_procs))),
            out_file=os.path.basename(self.files['coll']))
         p = subprocess.Popen(cmd, stderr=subprocess.PIPE, shell=True)
         _, err = p.communicate()
@@ -169,7 +196,7 @@ set -eu
 cd {work_dir}
 blat {blat_opt} -noHead {reference} {inp_file} {out_file}
 #blat -noHead {reference} {inp_file} {out_file}
-'''.format(work_dir=self.work_dir, blat_opt=self.opts.blat_opt, reference=self.opts.reference,
+'''.format(work_dir=self.work_dir, blat_opt=self.params.blat_opt, reference=self.params.reference,
            inp_file=self.files['coll'], out_file=self.files['blat'])
         p = subprocess.Popen(cmd, stderr=subprocess.PIPE, shell=True)
         _, err = p.communicate()
@@ -418,23 +445,32 @@ cat {filtsome} {filtemp} > {fuseq}
         if self.print_time:
             self.time_filter.print()
 
+    #
+    # Start functions
+    #
+
     def run(self):
-        breakinfo = self.get_data()
+        # Clear and Save
         self.delete_work_dir(True)
+        self.save_params()
+        # Collect
+        breakinfo = self.get_breakinfo()
         breakinfo = self.collect(breakinfo)
-        self.cat()
+        self.concat()
+        self.save_breakinfo(breakinfo)
+        # Blat
         self.blat()
+        # Filter
         self.blat_filter(breakinfo)
-        if self.opts.no_delete_work:
+        # Delete
+        if self.params.delete_work:
             self.delete_work_dir()
 
-    def restart_from_blat(self):
-        with open(self.breakinfo_path) as f:
-            breakinfo = json.load(f)
-        self.blat()
+    def restart(self):
+        breakinfo = self.load_breakinfo()
+        self.save_params()
+        if self.params.restart_blat:
+            self.blat()
         self.blat_filter(breakinfo)
-
-    def restart_from_filter(self):
-        with open(self.breakinfo_path) as f:
-            breakinfo = json.load(f)
-        self.blat_filter(breakinfo)
+        if self.params.delete_work:
+            self.delete_work_dir()
