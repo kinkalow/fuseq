@@ -195,7 +195,6 @@ cat {inp_files} > {out_file}
 set -eu
 cd {work_dir}
 blat {blat_opt} -noHead {reference} {inp_file} {out_file}
-#blat -noHead {reference} {inp_file} {out_file}
 '''.format(work_dir=self.work_dir, blat_opt=self.params.blat_opt, reference=self.params.reference,
            inp_file=self.files['coll'], out_file=self.files['blat'])
         p = subprocess.Popen(cmd, stderr=subprocess.PIPE, shell=True)
