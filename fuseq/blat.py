@@ -372,6 +372,8 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
 
         # Filter and write
         is_current = True
+        bp_start_extn = self.params.bp_start_extn
+        bp_end_extn = self.params.bp_end_extn
         for row in fr_preproc:
             # Target read
             cur_readname = row.rstrip('\n')[1:]
@@ -390,8 +392,8 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
                     pos_start = int(s[11]) + 1  # qstart
                     pos_end = int(s[12])        # qend
                     chr = s[13]                 # tname
-                    bp_start = int(s[15])       # tstart
-                    bp_end = int(s[16]) + 1     # tend ... NOTE: +1 increases the number of matches to Genomon results
+                    bp_start = int(s[15]) - bp_start_extn  # tstart
+                    bp_end = int(s[16]) + bp_end_extn      # tend ... NOTE: +1 increases the number of matches to Genomon results
                     assert(bp_start <= bp_end)
                 if readname == cur_readname:
                     # Filter based on chr and tstart-tend range
