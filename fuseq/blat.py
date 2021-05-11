@@ -21,7 +21,7 @@ class Blat():
                       'filtsome': 'filter_some', 'filtemp': 'filter_empty'}
         self.breakinfo_path = f'{self.work_dir}/{self.files["breakinfo"]}'
         # Timer
-        self.print_time = True
+        self.print_time = params.print_time
         self.time_coll = Timer('Collection')
         self.time_blat = Timer('Blat')
         self.time_filter = Timer('Filter')
@@ -197,7 +197,7 @@ cd {work_dir}
 blat {blat_opt} -noHead {reference} {inp_file} {out_file}
 '''.format(work_dir=self.work_dir, blat_opt=self.params.blat_opt, reference=self.params.reference,
            inp_file=self.files['coll'], out_file=self.files['blat'])
-        p = subprocess.Popen(cmd, stderr=subprocess.PIPE, shell=True)
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         _, err = p.communicate()
         if p.returncode != 0:
             print('[Error] at blat runtime')

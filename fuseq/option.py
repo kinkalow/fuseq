@@ -42,7 +42,7 @@ class Option:
         parser.add_argument('--reference', default='/share/pub/genomon/.genomon_local/genomon_pipeline-2.6.3/database/GRCh37/GRCh37.fa', type=str, help='Reference path')
         parser.add_argument('--end', default=1, type=int, help='Extend the end position of breakpoints at Blat filtering')
         parser.add_argument('--start', default=0, type=int, help='Extend the start position of breakpoints at Blat filtering')
-        #parser.add_argument('--show-time', default=False, action='store_true', help='Display elapsed time')
+        parser.add_argument('--time', default=False, action='store_true', help='Display elapsed time')
         parser.add_argument('--version', action='version', version=f'{prog}: {__version__}')
         self.args = parser.parse_args()
 
@@ -65,10 +65,12 @@ class Option:
         args.use_filt = False if args.no_use_filt else True
         args.bp_start_extn = args.start
         args.bp_end_extn = args.end
+        args.print_time = args.time
         del args.no_delete_work
         del args.no_use_filt
         del args.start
         del args.end
+        del args.time
         #
         # Change Arg
         #if 'tmp_delete_work' in args:
