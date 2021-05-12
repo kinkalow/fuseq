@@ -257,17 +257,25 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
             mfline = breakinfo['line']
             readname = readname[readname.index('_') + 1:]  # Remove the leading unique number
 
-            w1 = readname + '\n'
-            w2 = ' '.join((chr1, bp1, strand1, chr2, bp2, strand2, f'mfline={mfline}')) + '\n'
+            w1 = f'{readname} fLineNr={mfline}\n'
+            w2 = ' '.join((chr1, bp1, strand1, chr2, bp2, strand2)) + '\n'
+            w3 = seq + '\n'
+            w = w1 + w2 + w3
             if poses_filt:
                 fw = fws[0]
-                w3 = ''
-                for s, e, _ in poses_filt:
-                    w3 += ' ' * (s - 1) + seq[s - 1:e] + ' ' + str([s, e]).replace(' ', '') + '\n'
+                itemitems = [[f'{" "*(s-1)}{seq[s-1:e]}', f'[{s},{e}]', f'[{bps},{bpe}]', f'chr{chr}', f'{strand}']
+                             for s, e, _, bps, bpe, chr, strand in poses_filt]
+                strstrs = [[items[0] for items in itemitems], [items[1] for items in itemitems],
+                           [items[2] for items in itemitems], [items[3] for items in itemitems]]
+                lenlens = [[len(str) for str in strs] for i, strs in enumerate(strstrs)]
+                maxlens = [max(lens) for lens in lenlens]
+                spsps = [[maxlens[i] - le for le in lens] for i, lens in enumerate(lenlens)]
+                w4 = ''
+                for i, items in enumerate(itemitems):
+                    w4 += f'{items[0]}{" "*spsps[0][i]} {items[1]}{" "*spsps[1][i]} {items[2]}{" "*spsps[2][i]} {items[3]}{" "*spsps[3][i]} {items[4]}\n'
+                w += w4
             else:
                 fw = fws[1]
-                w3 = seq + '\n'
-            w = w1 + w2 + w3
             #w += str(other_info) + '\n'
             fw.write(w + '\n')
             #print(w, end='')
@@ -280,13 +288,13 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
 
             starts = [r[0] for r in poses]
             idx_asc = sorted(range(len(starts)), key=lambda k: starts[k])
-            poses_asc = [poses[i] for i in idx_asc]  # poses[i] = (start, end, one_or_two)
+            poses_asc = [poses[i] for i in idx_asc]  # poses[i] = (start, end, one_or_two, bp_start, bp_end, chr, strand)
 
             cur_idx = 0
             max_idx = len(idx_asc) - 1
             results = [0] * len(idx_asc)  # if 0/1, unnecessary/necessary elements
             while cur_idx < max_idx:
-                s, e, _ = poses_asc[cur_idx]
+                s, e = poses_asc[cur_idx][0], poses_asc[cur_idx][1]
                 # Extract a location with the same start position and the largest end position
                 for i in range(cur_idx + 1, max_idx + 1):
                     if poses_asc[i][0] != s:
@@ -320,7 +328,7 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
                 return poses_filt, breakinfo
 
             # Check
-            one_or_two_list = [i for _, _, i in poses_filt]
+            one_or_two_list = [p[2] for p in poses_filt]
             if len(set(one_or_two_list)) != 2:
                 print('[Error] poses_filt has some problem')
                 print(poses_filt)
@@ -329,23 +337,22 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
             # Sort position and break information
             # if one_or_two == 1, sequence1 is displayed first before sequence2
             # if one_or_two == 2, sequence2 is displayed first before sequence1
-            starts = [s for s, _, _ in poses_filt]
+            starts = [p[0] for p in poses_filt]
             idx_min = starts.index(min(starts))
             is_one_first = True if poses_filt[idx_min][2] == 1 else False
             if is_one_first:
                 idxes = [i for i, one_or_two in enumerate(one_or_two_list) if one_or_two == 1] + \
-                        [i for i, one_or_two in enumerate(one_or_two_list) if one_or_two == 2]
+                    [i for i, one_or_two in enumerate(one_or_two_list) if one_or_two == 2]
             else:
                 idxes = [i for i, one_or_two in enumerate(one_or_two_list) if one_or_two == 2] + \
-                        [i for i, one_or_two in enumerate(one_or_two_list) if one_or_two == 1]
+                    [i for i, one_or_two in enumerate(one_or_two_list) if one_or_two == 1]
             new_poses_filt = [poses_filt[idx] for idx in idxes]
 
-            if poses_filt[0][2] == 1:
+            if new_poses_filt[0][2] == 1:
                 new_breakinfo = breakinfo
             else:  # Reverse
                 b = breakinfo.copy()
-                b['chr2'], b['bp2'], b['strand2'], b['chr1'], b['bp1'], b['strand1'] = \
-                b['chr1'], b['bp1'], b['strand1'], b['chr2'], b['bp2'], b['strand2']
+                b['chr2'], b['bp2'], b['strand2'], b['chr1'], b['bp1'], b['strand1'] = b['chr1'], b['bp1'], b['strand1'], b['chr2'], b['bp2'], b['strand2']
                 new_breakinfo = b
 
             return new_poses_filt, new_breakinfo
@@ -388,23 +395,26 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
                     s = fr_blat.readline().rstrip('\n').split('\t')
                     if s == ['']:  # Check if file pointer is last
                         break
+                    strand = s[8]               # strand
                     readname = s[9]             # qname
                     pos_start = int(s[11]) + 1  # qstart
                     pos_end = int(s[12])        # qend
                     chr = s[13]                 # tname
-                    bp_start = int(s[15]) - bp_start_extn  # tstart
-                    bp_end = int(s[16]) + bp_end_extn      # tend ... NOTE: +1 increases the number of matches to Genomon results
+                    bp_start = int(s[15])       # tstart
+                    bp_end = int(s[16])         # tend
                     assert(bp_start <= bp_end)
+                    bp_start_adj = bp_start - bp_start_extn
+                    bp_end_adj = bp_end + bp_end_extn  # NOTE: +1 increases the number of matches to Genomon results
                 if readname == cur_readname:
                     # Filter based on chr and tstart-tend range
-                    if chr == cur_chr1 and bp_start <= cur_bp1 <= bp_end:
-                        poses.append((pos_start, pos_end, 1))
-                    elif chr == cur_chr2 and bp_start <= cur_bp2 <= bp_end:
-                        poses.append((pos_start, pos_end, 2))
+                    if chr == cur_chr1 and bp_start_adj <= cur_bp1 <= bp_end_adj:
+                        poses.append((pos_start, pos_end, 1, bp_start + 1, bp_end, chr, strand))
+                    elif chr == cur_chr2 and bp_start_adj <= cur_bp2 <= bp_end_adj:
+                        poses.append((pos_start, pos_end, 2, bp_start + 1, bp_end, chr, strand))
                     if chr == cur_chr1:
-                        other_info.append((bp_start, bp_end, 1))
+                        other_info.append((bp_start_adj, bp_end_adj, 1))
                     elif chr == cur_chr2:
-                        other_info.append((bp_start, bp_end, 2))
+                        other_info.append((bp_start_adj, bp_end_adj, 2))
                     is_current = True
                 else:
                     # Write one read
