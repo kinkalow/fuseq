@@ -7,6 +7,7 @@ from fuseq.checker import Checker
 
 
 def main():
+
     opt = Option()
     Checker.has_tools()
     genomon = Genomon(opt.refer())
@@ -15,8 +16,8 @@ def main():
         params = opt.copy()
 
         # Paths
-        work_dir = f'{params.fuseq_root_dir}/{mf_dir}/_fuseq_work'
-        fuseq_path = f'{params.fuseq_root_dir}/{mf_dir}/fusion_sequence.txt'
+        work_dir = f'{params.fuseq_root_dir}/{mf_dir}/{params.work_dirname}'
+        fuseq_path = f'{params.fuseq_root_dir}/{mf_dir}/{params.fuseq_filename}'
 
         # Add to params
         #params.mf_path = mf_path

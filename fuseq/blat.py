@@ -9,7 +9,9 @@ from fuseq.checker import Checker
 class Blat():
 
     def __init__(self, mf_path, jun_dic, work_dir, fuseq_path, params):
-        self.mf_path = mf_path  # merge_fusionfusion path
+        # merge_fusionfusion path
+        self.mf_path = self._filter_mf(mf_path, work_dir, params.mf_lines)
+        #
         self.jun_dic = jun_dic  # jun_dic = {directory name containing junction file, full path of junction file}
         self.work_dir = work_dir
         self.fuseq_path = fuseq_path
@@ -25,6 +27,24 @@ class Blat():
         self.time_coll = Timer('Collection')
         self.time_blat = Timer('Blat')
         self.time_filter = Timer('Filter')
+
+    def _filter_mf(self, mf_path, work_dir, mf_lines):
+        """Extract data for the line numbers stored in mf_lines from mf_path and
+           save the extracted data to a file"""
+        if not mf_lines:
+            return mf_path
+        idx = 0
+        new_mf_path = f'{os.path.dirname(work_dir)}/mf.txt'
+        with open(mf_path, 'r') as fr:
+            os.makedirs(os.path.dirname(new_mf_path), exist_ok=True)
+            with open(new_mf_path, 'w') as fw:
+                for i, row in enumerate(fr, start=1):
+                    if i == mf_lines[idx]:
+                        fw.write(row)
+                        idx += 1
+                        if idx > len(mf_lines) - 1:
+                            break
+        return new_mf_path
 
     #
     # Utility
@@ -134,7 +154,7 @@ echo -n "$cnt"
                                 'sample': sample,
                                 'chr1': chr1, 'bp1': bp1, 'strand1': strand1,
                                 'chr2': chr2, 'bp2': bp2, 'strand2': strand2})
-            sender.send(results)
+            sender.send((out_path, results))
             sender.close()
 
         jobs = []
@@ -147,10 +167,11 @@ echo -n "$cnt"
             p.start()
 
         # results
+        out_paths = []
         breakinfo = []
         has_err = False
         for pipe in pipes:
-            results = pipe.recv()  # Wait for the results to be sent
+            out_path, results = pipe.recv()  # Wait for the results to be sent
             for r in results:
                 if r['ret'] != 0 or len(r['err']) != 0 or not r['cnt'].isdecimal():
                     print(f'[Error] {str(r)}')
@@ -158,6 +179,8 @@ echo -n "$cnt"
                 r.pop('ret')
                 r.pop('err')
                 breakinfo.append(r)
+            if os.path.exists(out_path):
+                out_paths.append(out_path)
 
         for job in jobs:
             job.join()
@@ -169,16 +192,16 @@ echo -n "$cnt"
         if self.print_time:
             self.time_coll.print()
 
-        return breakinfo
+        return out_paths, breakinfo
 
-    def concat(self):
+    def concat(self, inp_paths):
+        inp_files = ' '.join([os.path.basename(path) for path in inp_paths])
         cmd = '''\
 #!/bin/bash
 set -eu
 cd {work_dir}
 cat {inp_files} > {out_file}
-'''.format(work_dir=self.work_dir,
-           inp_files=' '.join(map(str, range(self.params.coll_procs))),
+'''.format(work_dir=self.work_dir, inp_files=inp_files,
            out_file=os.path.basename(self.files['coll']))
         p = subprocess.Popen(cmd, stderr=subprocess.PIPE, shell=True)
         _, err = p.communicate()
@@ -462,12 +485,12 @@ cat {filtsome} {filtemp} > {fuseq}
 
     def run(self):
         # Clear and Save
-        self.delete_work_dir(True)
+        self.delete_work_dir(make_work_dir=True)
         self.save_params()
         # Collect
         breakinfo = self.get_breakinfo()
-        breakinfo = self.collect(breakinfo)
-        self.concat()
+        coll_out_paths, breakinfo = self.collect(breakinfo)
+        self.concat(coll_out_paths)
         self.save_breakinfo(breakinfo)
         # Blat
         self.blat()

@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 from fuseq import __version__
 from fuseq.checker import Checker
 
@@ -30,6 +31,7 @@ class Option:
         parser.add_argument('-b', '--blat-opt', default='', type=str, help='Blat options')
         #parser.add_argument('-b', '--blat-opt', default='-minScore=20 -minMatch=1', type=str, help='Blat options')
         parser.add_argument('-d', '--star-dir', default='', type=str, help='Alternative star directory in genomon output')
+        parser.add_argument('-l', '--lines', default='', type=str, help='Line number in a fusion gene detection file')
         parser.add_argument('-f', '--fusion-file', default='', type=str, help='Alternative merge_fusionfusion_filt.txt file in genomon output')
         parser.add_argument('-p', '--coll-procs', default=4, type=int, help='Number of parallel processes for collecting data for Blat input')
         parser.add_argument('-w', '--no-delete-work', default=False, action='store_true', help='Do not delete work directory')
@@ -51,26 +53,49 @@ class Option:
         Checker.isdir(args.genomon_root_dir)
         Checker.isfile(args.reference)
 
+    def _get_lines(self, line_str):
+        """line_str='1,5,3,8-10,12' => [1, 3, 5, 8, 9, 10, 12]"""
+        if not line_str:
+            return []
+        line_sp = line_str.split(',')
+        lines = []
+        for line in line_sp:
+            m = re.match(r'^(\d+)-(\d+)$', line)
+            if m:
+                lines += list(range(int(m.group(1)), int(m.group(2)) + 1))
+            elif not re.match(r'^\d+$', line):
+                print(f'Not a line number: {line}')
+                exit(1)
+            else:
+                lines.append(int(line))
+        lines = sorted(list(set(lines)))
+        # Add header line
+        if lines[0] != 1:
+            lines.insert(0, 1)
+        return lines
+
     def _create(self):
         args = self.args
 
         # Change Args
-        args.genomon_root_dir = os.path.abspath(args.genomon_root_dir)
         args.fuseq_root_dir = os.path.abspath(args.fuseq_root_dir)
         args.fusion_file = os.path.abspath(args.fusion_file) if args.fusion_file else ''
-        args.star_dir = os.path.abspath(args.star_dir) if args.star_dir else ''
+        args.genomon_root_dir = os.path.abspath(args.genomon_root_dir)
         args.reference = os.path.abspath(args.reference)
+        args.star_dir = os.path.abspath(args.star_dir) if args.star_dir else ''
         #
-        args.delete_work = not args.no_delete_work
-        args.use_filt = False if args.no_use_filt else True
-        args.bp_start_extn = args.start
         args.bp_end_extn = args.end
+        args.bp_start_extn = args.start
+        args.delete_work = not args.no_delete_work
         args.print_time = args.time
-        del args.no_delete_work
-        del args.no_use_filt
-        del args.start
+        args.use_filt = False if args.no_use_filt else True
+        args.mf_lines = self._get_lines(args.lines)
         del args.end
+        del args.start
+        del args.no_delete_work
         del args.time
+        del args.no_use_filt
+        del args.lines
         #
         # Change Arg
         #if 'tmp_delete_work' in args:
@@ -82,6 +107,8 @@ class Option:
 
         # New Arg
         args.is_restart = True if args.restart_blat or args.restart_filter else False
+        args.fuseq_filename = 'fusion_sequence.txt'
+        args.work_dirname = '_fuseq_work'
 
     def refer(self):
         return self.args
