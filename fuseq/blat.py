@@ -31,12 +31,15 @@ class Blat():
     def _filter_mf(self, mf_path, work_dir, mf_lines):
         """Extract data for the line numbers stored in mf_lines from mf_path and
            save the extracted data to a file"""
+        new_mf_path = f'{os.path.dirname(work_dir)}/fusion.txt'
+        os.makedirs(os.path.dirname(new_mf_path), exist_ok=True)
         if not mf_lines:
+            if os.path.exists(new_mf_path):
+                os.remove(new_mf_path)
+            os.symlink(mf_path, new_mf_path)
             return mf_path
         idx = 0
-        new_mf_path = f'{os.path.dirname(work_dir)}/mf.txt'
         with open(mf_path, 'r') as fr:
-            os.makedirs(os.path.dirname(new_mf_path), exist_ok=True)
             with open(new_mf_path, 'w') as fw:
                 for i, row in enumerate(fr, start=1):
                     if i == mf_lines[idx]:
@@ -143,7 +146,7 @@ echo -n "$cnt"
                 os.remove(out_path)
 
             for step, [sample, chr1, bp1, strand1, chr2, bp2, strand2] in enumerate(breakinfo[head:tail]):
-                line = head + step + 1
+                line = 1 + (head + 1) + step  # first 1: header line, second 1: starting with 1
                 jun_path = self.jun_dic[sample]
                 cmd = cmd_template.format(line=line, chr1=chr1, bp1=bp1, chr2=chr2, bp2=bp2,
                                           jun_path=jun_path, out_path=out_path)
