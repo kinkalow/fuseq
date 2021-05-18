@@ -5,14 +5,12 @@ from fuseq.checker import Checker
 class Genomon:
     def __init__(self, opts):
         self.opts = opts
-
+        # fusion path and star directory path
         self._mf_path = {}
-        self._jun_path = {}
-        self._paths = [self._mf_path, self._jun_path]
-
-        # Create required file paths and check for their existence
+        self._star_dir = opts.star_dir if opts.star_dir else f'{opts.genomon_root_dir}/star'
+        # Create fusion paths and check if files exist
         self._create_mf_path()
-        self._create_jun_path()
+        self._check_inside_star()
 
     def _create_mf_path(self):
         if self.opts.fusion_file:
@@ -28,27 +26,22 @@ class Genomon:
                 Checker.isfile(path)
                 self._mf_path[d] = path
 
-    def _create_jun_path(self):
-        ext1 = '.junction'
-        ext2 = '.sam'
-        base = self.opts.star_dir if self.opts.star_dir else f'{self.opts.genomon_root_dir}/star'
-        Checker.isdir(base)
-        for d in os.listdir(base):
-            li = glob.glob(f'{base}/{d}/*{ext1}')
+    def _check_inside_star(self):
+        # Check if star direcotry exits
+        star_dir = self._star_dir
+        Checker.isdir(star_dir)
+        # Check for the existence of junction and sam files
+        for d in os.listdir(star_dir):
+            li = glob.glob(f'{star_dir}/{d}/*.junction')
             Checker.isonefile(li)
             f_jun = li[0]
-            f_sam = f_jun[:-len(ext1)] + ext2
+            f_sam = f_jun[:-8] + 'sam'
             Checker.isfile(f_sam)
-            self._jun_path[d] = f_jun
-
-    @property
-    def paths(self):
-        return self._paths
 
     @property
     def mf_dic(self):
         return self._mf_path
 
     @property
-    def jun_dic(self):
-        return self._jun_path
+    def star_dir(self):
+        return self._star_dir

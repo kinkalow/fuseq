@@ -18,15 +18,15 @@ def main():
         # Paths
         work_dir = f'{params.fuseq_root_dir}/{mf_dir}/{params.work_dirname}'
         fuseq_path = f'{params.fuseq_root_dir}/{mf_dir}/{params.fuseq_filename}'
+        inputs = {'mf_path': mf_path, 'star_dir': genomon.star_dir}
 
         # Add to params
-        #params.mf_path = mf_path
-        #params.jun_dic = genomon.jun_dic
-        #params.work_dir = work_dir
-        #params.fuseq_path = fuseq_path
+        params.work_dir = work_dir
+        params.fuseq_path = fuseq_path
+        params.inputs = inputs
 
         # Run Blat
-        blat = Blat(mf_path, genomon.jun_dic, work_dir, fuseq_path, params)
+        blat = Blat(inputs, work_dir, fuseq_path, params)
         if params.is_restart:
             Checker.isdir(work_dir)
             blat.restart()

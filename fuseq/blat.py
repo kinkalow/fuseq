@@ -1,3 +1,4 @@
+import glob
 import json
 import os
 import subprocess
@@ -8,46 +9,25 @@ from fuseq.checker import Checker
 
 class Blat():
 
-    def __init__(self, mf_path, jun_dic, work_dir, fuseq_path, params):
-        # merge_fusionfusion path
-        self.mf_path = self._filter_mf(mf_path, work_dir, params.mf_lines)
-        #
-        self.jun_dic = jun_dic  # jun_dic = {directory name containing junction file, full path of junction file}
-        self.work_dir = work_dir
-        self.fuseq_path = fuseq_path
-        # Parameters
+    def __init__(self, inputs, work_dir, fuseq_path, params):
+        self.inputs = inputs
+        self.work_dir = params.work_dir
+        self.fuseq_path = params.fuseq_path
         self.params = params
-        # File names / Full path
-        self.files = {'params': 'params', 'coll': 'collect',
-                      'breakinfo': 'breakinfo', 'blat': 'blat',
+        # Input data
+        parent_work = os.path.dirname(work_dir)
+        self.mf_path = f'{parent_work}/fusion.txt'
+        self.star_dir = f'{parent_work}/{os.path.basename(inputs["star_dir"])}'
+        # File names
+        self.files = {'params': 'params', 'coll': 'collect', 'blat': 'blat',
                       'filtsome': 'filter_some', 'filtemp': 'filter_empty'}
-        self.breakinfo_path = f'{self.work_dir}/{self.files["breakinfo"]}'
+        # Full path
+        self.breakinfo_path = f'{work_dir}/breakinfo'
         # Timer
         self.print_time = params.print_time
         self.time_coll = Timer('Collection')
         self.time_blat = Timer('Blat')
         self.time_filter = Timer('Filter')
-
-    def _filter_mf(self, mf_path, work_dir, mf_lines):
-        """Extract data for the line numbers stored in mf_lines from mf_path and
-           save the extracted data to a file"""
-        new_mf_path = f'{os.path.dirname(work_dir)}/fusion.txt'
-        os.makedirs(os.path.dirname(new_mf_path), exist_ok=True)
-        if not mf_lines:
-            if os.path.exists(new_mf_path):
-                os.remove(new_mf_path)
-            os.symlink(mf_path, new_mf_path)
-            return mf_path
-        idx = 0
-        with open(mf_path, 'r') as fr:
-            with open(new_mf_path, 'w') as fw:
-                for i, row in enumerate(fr, start=1):
-                    if i == mf_lines[idx]:
-                        fw.write(row)
-                        idx += 1
-                        if idx > len(mf_lines) - 1:
-                            break
-        return new_mf_path
 
     #
     # Utility
@@ -80,6 +60,32 @@ class Blat():
     #
     # Main processing functions
     #
+
+    def create_symlinks(self):
+        # Remove existing files
+        if os.path.exists(self.mf_path):
+            os.remove(self.mf_path)
+        if os.path.exists(self.star_dir):
+            os.remove(self.star_dir)
+        # Create star symbolic file
+        os.symlink(self.inputs['star_dir'], self.star_dir)
+        # Create fusion symbolic file or new file
+        if not self.params.mf_lines:
+            os.symlink(self.inputs['mf_path'], self.mf_path)
+        else:
+            # Extract specified lines from a fusion file and write them
+            idx = 0
+            with open(self.inputs['mf_path'], 'r') as fr:
+                with open(self.mf_path, 'w') as fw:
+                    for i, row in enumerate(fr, start=1):
+                        if i == self.mf_lines[idx]:
+                            fw.write(row)
+                            idx += 1
+                            if idx > len(self.mf_lines) - 1:
+                                break
+
+    def create_star_symlink(self):
+        os.symlink(self.old_star_path, self.new_star_path)
 
     def get_breakinfo(self):
         chrs = list(map(lambda x: str(x), range(23))) + list('XY')
@@ -145,9 +151,12 @@ echo -n "$cnt"
             if os.path.exists(out_path):
                 os.remove(out_path)
 
+            jun_dic = {}
             for step, [sample, chr1, bp1, strand1, chr2, bp2, strand2] in enumerate(breakinfo[head:tail]):
                 line = 1 + (head + 1) + step  # first 1: header line, second 1: starting with 1
-                jun_path = self.jun_dic[sample]
+                if sample not in jun_dic:
+                    jun_dic[sample] = glob.glob(f'{self.star_dir}/{sample}/*.junction')[0]
+                jun_path = jun_dic[sample]
                 cmd = cmd_template.format(line=line, chr1=chr1, bp1=bp1, chr2=chr2, bp2=bp2,
                                           jun_path=jun_path, out_path=out_path)
                 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
@@ -368,17 +377,18 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
             is_one_first = True if poses_filt[idx_min][2] == 1 else False
             if is_one_first:
                 idxes = [i for i, one_or_two in enumerate(one_or_two_list) if one_or_two == 1] + \
-                    [i for i, one_or_two in enumerate(one_or_two_list) if one_or_two == 2]
+                        [i for i, one_or_two in enumerate(one_or_two_list) if one_or_two == 2]
             else:
                 idxes = [i for i, one_or_two in enumerate(one_or_two_list) if one_or_two == 2] + \
-                    [i for i, one_or_two in enumerate(one_or_two_list) if one_or_two == 1]
+                        [i for i, one_or_two in enumerate(one_or_two_list) if one_or_two == 1]
             new_poses_filt = [poses_filt[idx] for idx in idxes]
 
             if new_poses_filt[0][2] == 1:
                 new_breakinfo = breakinfo
             else:  # Reverse
                 b = breakinfo.copy()
-                b['chr2'], b['bp2'], b['strand2'], b['chr1'], b['bp1'], b['strand1'] = b['chr1'], b['bp1'], b['strand1'], b['chr2'], b['bp2'], b['strand2']
+                b['chr2'], b['bp2'], b['strand2'], b['chr1'], b['bp1'], b['strand1'] = \
+                b['chr1'], b['bp1'], b['strand1'], b['chr2'], b['bp2'], b['strand2']
                 new_breakinfo = b
 
             return new_poses_filt, new_breakinfo
@@ -491,6 +501,7 @@ cat {filtsome} {filtemp} > {fuseq}
         self.delete_work_dir(make_work_dir=True)
         self.save_params()
         # Collect
+        self.create_symlinks()
         breakinfo = self.get_breakinfo()
         coll_out_paths, breakinfo = self.collect(breakinfo)
         self.concat(coll_out_paths)
