@@ -115,6 +115,14 @@ class Blat():
         data_num = line_cnt // coll_procs if line_cnt % coll_procs == 0 else line_cnt // coll_procs + 1
         heads = [i * data_num for i in range(coll_procs)] + [line_cnt]
 
+        # Filter commands
+        readname_filt_cmd = ''
+        if self.params.readname_filt:
+            readname_filt_cmd = f'[ "$readname" != \'{self.params.readname_filt}\' ] && continue'
+        seq_filt_cmd = ''
+        if self.params.seq_filt:
+            seq_filt_cmd = f'[ "$seq" != \'{self.params.seq_filt}\' ] && continue'
+
         def task(i_proc, sender):
             cmd_template = '''\
 #!/bin/bash
@@ -134,9 +142,11 @@ for readname in $(cat "$jun_path" | awk '{{ \\
   if ( ($1 == "'$chr1'" && $2 == "'$bp1'" && $4 == "'$chr2'" && $5 == "'$bp2'") || \\
        ($1 == "'$chr2'" && $2 == "'$bp2'" && $4 == "'$chr1'" && $5 == "'$bp1'")    \\
      ) print $10 }}'); do
+    {readname_filt_cmd}
     seqs=$(grep "^$readname" "$sam_path" | awk '{{ if ($7 != "=" && $9 == 0 && $15 != "XS:A:+") print $10 }}')
     [ -z "$seqs" ] && continue
     for seq in $seqs; do
+      {seq_filt_cmd}
       cnt=$((cnt+1))
       printf ">{line}-${{cnt}}_$readname\\n$seq\\n" >> "$out_path"
     done
@@ -158,7 +168,8 @@ echo -n "$cnt"
                     jun_dic[sample] = glob.glob(f'{self.star_dir}/{sample}/*.junction')[0]
                 jun_path = jun_dic[sample]
                 cmd = cmd_template.format(line=line, chr1=chr1, bp1=bp1, chr2=chr2, bp2=bp2,
-                                          jun_path=jun_path, out_path=out_path)
+                                          jun_path=jun_path, out_path=out_path,
+                                          readname_filt_cmd=readname_filt_cmd, seq_filt_cmd=seq_filt_cmd)
                 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
                 out, err = p.communicate()
                 results.append({'line': line, 'ret': p.returncode,
@@ -198,6 +209,10 @@ echo -n "$cnt"
             job.join()
 
         if has_err:
+            exit(1)
+
+        if not out_paths:
+            print('[Error] No input data for blat')
             exit(1)
 
         self.time_coll.end()

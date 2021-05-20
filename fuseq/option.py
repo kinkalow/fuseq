@@ -41,6 +41,8 @@ class Option:
         parser.add_argument('-F', '--restart-filter', default=False, action='store_true', help='Restart from Blat filter')
         parser.add_argument('--no-use-filt', default=False, action='store_true', help='Use merge_fusionfusion.txt instead of merge_fusionfusion_filt.txt')
         #parser.add_argument('--no-delete-work', default=True, nargs=0, action=DelWorkAct, help='Do not delete work directory when not restarting')
+        parser.add_argument('--readname', default='', type=str, help='Filtering with readname')
+        parser.add_argument('--sequence', default='', type=str, help='Filtering with sequence')
         parser.add_argument('--reference', default='/share/pub/genomon/.genomon_local/genomon_pipeline-2.6.3/database/GRCh37/GRCh37.fa', type=str, help='Reference path')
         parser.add_argument('--end', default=1, type=int, help='Extend the end position of breakpoints at Blat filtering')
         parser.add_argument('--start', default=0, type=int, help='Extend the start position of breakpoints at Blat filtering')
@@ -87,15 +89,19 @@ class Option:
         args.bp_end_extn = args.end
         args.bp_start_extn = args.start
         args.delete_work = not args.no_delete_work
-        args.print_time = args.time
-        args.use_filt = False if args.no_use_filt else True
         args.mf_lines = self._get_lines(args.lines)
+        args.print_time = args.time
+        args.readname_filt = args.readname
+        args.seq_filt = args.sequence
+        args.use_filt = False if args.no_use_filt else True
         del args.end
         del args.start
         del args.no_delete_work
-        del args.time
-        del args.no_use_filt
         del args.lines
+        del args.time
+        del args.readname
+        del args.sequence
+        del args.no_use_filt
         #
         # Change Arg
         #if 'tmp_delete_work' in args:
