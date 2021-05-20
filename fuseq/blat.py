@@ -20,7 +20,7 @@ class Blat():
         self.star_dir = f'{parent_work}/{os.path.basename(inputs["star_dir"])}'
         # File names
         self.files = {'params': 'params', 'coll': 'collect', 'blat': 'blat',
-                      'filtsome': 'filter_some', 'filtemp': 'filter_empty'}
+                      'filtmatch': 'filter_match', 'filtmiss': 'filter_miss'}
         # Full path
         self.breakinfo_path = f'{work_dir}/breakinfo'
         # Timer
@@ -364,7 +364,7 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
                     break
                 cur_idx = i
 
-            poses_filt = [poses[i] for i, zero_or_one in enumerate(results) if zero_or_one == 1]
+            poses_filt = [poses[idx_asc[i]] for i, zero_or_one in enumerate(results) if zero_or_one == 1]
             if len(poses_filt) < 2:
                 return []
 
@@ -414,16 +414,16 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
         # Full path
         blat_path = f'{self.work_dir}/{self.files["blat"]}'
         coll_path = f'{self.work_dir}/{self.files["coll"]}'
-        filtsome_path = f'{self.work_dir}/{self.files["filtsome"]}'
-        filtemp_path = f'{self.work_dir}/{self.files["filtemp"]}'
+        filtmatch_path = f'{self.work_dir}/{self.files["filtmatch"]}'
+        filtmiss_path = f'{self.work_dir}/{self.files["filtmiss"]}'
         fuseq_path = self.fuseq_path
 
         # Open
         fr_preproc = open(coll_path, 'r')
         fr_blat = open(blat_path, 'r')
-        fw_filtsome = open(filtsome_path, 'w')
-        fw_filtemp = open(filtemp_path, 'w')
-        fw_filts = [fw_filtsome, fw_filtemp]
+        fw_filtmatch = open(filtmatch_path, 'w')
+        fw_filtmiss = open(filtmiss_path, 'w')
+        fw_filts = [fw_filtmatch, fw_filtmiss]
 
         # Filter and write
         is_current = True
@@ -443,22 +443,24 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
                     s = fr_blat.readline().rstrip('\n').split('\t')
                     if s == ['']:  # Check if file pointer is last
                         break
-                    strand = s[8]               # strand
-                    readname = s[9]             # qname
-                    pos_start = int(s[11]) + 1  # qstart
-                    pos_end = int(s[12])        # qend
-                    chr = s[13]                 # tname
-                    bp_start = int(s[15])       # tstart
-                    bp_end = int(s[16])         # tend
+                    strand = s[8]           # strand
+                    readname = s[9]         # qname
+                    pos_start = int(s[11])  # qstart
+                    pos_end = int(s[12])    # qend
+                    chr = s[13]             # tname
+                    bp_start = int(s[15])   # tstart
+                    bp_end = int(s[16])     # tend
                     assert(bp_start <= bp_end)
+                    pos_start_adj = pos_start + 1
                     bp_start_adj = bp_start - bp_start_extn
                     bp_end_adj = bp_end + bp_end_extn  # NOTE: +1 increases the number of matches to Genomon results
                 if readname == cur_readname:
                     # Filter based on chr and tstart-tend range
+                    #if pos_end - pos_start == bp_end - bp_start:
                     if chr == cur_chr1 and bp_start_adj <= cur_bp1 <= bp_end_adj:
-                        poses.append((pos_start, pos_end, 1, bp_start + 1, bp_end, chr, strand))
+                        poses.append((pos_start_adj, pos_end, 1, bp_start + 1, bp_end, chr, strand))
                     elif chr == cur_chr2 and bp_start_adj <= cur_bp2 <= bp_end_adj:
-                        poses.append((pos_start, pos_end, 2, bp_start + 1, bp_end, chr, strand))
+                        poses.append((pos_start_adj, pos_end, 2, bp_start + 1, bp_end, chr, strand))
                     if chr == cur_chr1:
                         other_info.append((bp_start_adj, bp_end_adj, 1))
                     elif chr == cur_chr2:
@@ -476,29 +478,29 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
         # Close
         fr_preproc.close()
         fr_blat.close()
-        fw_filtsome.close()
-        fw_filtemp.close()
+        fw_filtmatch.close()
+        fw_filtmiss.close()
 
-        # Concat filtsome and filtemp
-        filtsome_exists = os.path.exists(filtsome_path)
-        filtemp_exists = os.path.exists(filtemp_path)
-        if filtsome_exists and filtemp_exists:
+        # Concat filtmatch and filtmiss
+        filtmatch_exists = os.path.exists(filtmatch_path)
+        filtmiss_exists = os.path.exists(filtmiss_path)
+        if filtmatch_exists and filtmiss_exists:
             cmd = '''\
 #!/bin/bash
 set -eu
 cd {work_dir}
-cat {filtsome} {filtemp} > {fuseq}
-'''.format(work_dir=self.work_dir, fuseq=fuseq_path, filtsome=filtsome_path, filtemp=filtemp_path)
+cat {filtmatch} {filtmiss} > {fuseq}
+'''.format(work_dir=self.work_dir, fuseq=fuseq_path, filtmatch=filtmatch_path, filtmiss=filtmiss_path)
             p = subprocess.Popen(cmd, stderr=subprocess.PIPE, shell=True)
             _, err = p.communicate()
             if p.returncode != 0:
                 print('[Error] at filter runtime')
                 print(err)
                 exit(1)
-        elif filtsome_exists:
-            shutil.move(filtsome_path, fuseq_path)
-        elif filtemp_exists:
-            shutil.move(filtemp_path, fuseq_path)
+        elif filtmatch_exists:
+            shutil.move(filtmatch_path, fuseq_path)
+        elif filtmiss_exists:
+            shutil.move(filtmiss_path, fuseq_path)
 
         self.time_filter.end()
         if self.print_time:
