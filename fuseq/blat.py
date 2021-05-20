@@ -62,10 +62,10 @@ class Blat():
     #
 
     def create_symlinks(self):
-        # Remove existing files
-        if os.path.exists(self.mf_path):
+        # Remove files
+        if os.path.lexists(self.mf_path):
             os.remove(self.mf_path)
-        if os.path.exists(self.star_dir):
+        if os.path.lexists(self.star_dir):
             os.remove(self.star_dir)
         # Create star symbolic file
         os.symlink(self.inputs['star_dir'], self.star_dir)
@@ -83,9 +83,6 @@ class Blat():
                             idx += 1
                             if idx > len(self.mf_lines) - 1:
                                 break
-
-    def create_star_symlink(self):
-        os.symlink(self.old_star_path, self.new_star_path)
 
     def get_breakinfo(self):
         chrs = list(map(lambda x: str(x), range(23))) + list('XY')
