@@ -20,7 +20,8 @@ class Blat():
         self.star_dir = f'{parent_work}/{os.path.basename(inputs["star_dir"])}'
         # File names
         self.files = {'params': 'params', 'coll': 'collect', 'blat': 'blat',
-                      'filtmatch': 'filter_match', 'filtmiss': 'filter_miss'}
+                      'filtmatch': 'filter_match', 'filtmiss': 'filter_miss',
+                      'coll_res': 'collect_restart', 'blat_res': 'blat_restart'}
         # Full path
         self.breakinfo_path = f'{work_dir}/breakinfo'
         # Timer
@@ -145,7 +146,7 @@ for readname in $(cat "$jun_path" | awk '{{ \\
     for seq in $seqs; do
       {seq_filt_cmd}
       cnt=$((cnt+1))
-      printf ">{line}-${{cnt}}_$readname\\n$seq\\n" >> "$out_path"
+      printf ">{linenr}-${{cnt}}_$readname\\n$seq\\n" >> "$out_path"
     done
 done
 echo -n "$cnt"
@@ -160,16 +161,16 @@ echo -n "$cnt"
 
             jun_dic = {}
             for step, [sample, chr1, bp1, strand1, chr2, bp2, strand2] in enumerate(breakinfo[head:tail]):
-                line = 1 + (head + 1) + step  # first 1: header line, second 1: starting with 1
+                linenr = 1 + (head + 1) + step  # first 1: header line, second 1: starting with 1
                 if sample not in jun_dic:
                     jun_dic[sample] = glob.glob(f'{self.star_dir}/{sample}/*.junction')[0]
                 jun_path = jun_dic[sample]
-                cmd = cmd_template.format(line=line, chr1=chr1, bp1=bp1, chr2=chr2, bp2=bp2,
+                cmd = cmd_template.format(linenr=linenr, chr1=chr1, bp1=bp1, chr2=chr2, bp2=bp2,
                                           jun_path=jun_path, out_path=out_path,
                                           readname_filt_cmd=readname_filt_cmd, seq_filt_cmd=seq_filt_cmd)
                 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
                 out, err = p.communicate()
-                results.append({'line': line, 'ret': p.returncode,
+                results.append({'linenr': linenr, 'ret': p.returncode,
                                 'err': err.decode(), 'cnt': out.decode(),
                                 'sample': sample,
                                 'chr1': chr1, 'bp1': bp1, 'strand1': strand1,
@@ -233,6 +234,92 @@ cat {inp_files} > {out_file}
             print('[Error] at cat runtime')
             print(err)
             exit(1)
+
+    def filter_inputs_on_blat_restart(self, breakinfo):
+        coll_inp = f"{self.work_dir}/{self.files['coll']}"
+        coll_out = f"{self.work_dir}/{self.files['coll_res']}"
+
+        # Conditions for obtaining targets
+        if self.params.readname_filt:
+            target = self.params.readname_filt + '\n'
+
+            def cond():
+                return readname[readname.index('_') + 1:] == target
+        else:
+            target = self.params.seq_filt + '\n'
+
+            def cond():
+                return seq == target
+
+        # Filter collection data
+        linenrs = []
+        cnts = {}
+        with open(coll_out, 'w') as fw:
+            with open(coll_inp, 'r') as fr:
+                while True:
+                    readname = fr.readline()
+                    if not readname:
+                        break
+                    seq = fr.readline()
+                    if cond():
+                        linenr = int(readname[1:readname.index('_')].split('-')[0])  # >2-1_READNAME => 2
+                        linenrs.append(linenr)
+                        cnts[linenr] = cnts[linenr] + 1 if linenr in cnts else 1
+                        fw.write(readname)
+                        fw.write(seq)
+
+        # Check
+        if not linenrs:
+            print('[Error] No input data after filtering')
+            exit(1)
+
+        # Filter breakinfo
+        linenrs = set(linenrs)
+        breakinfo = [b for b in breakinfo if int(b['linenr']) in linenrs]
+        for b in breakinfo:
+            b['cnt'] = cnts[b['linenr']]
+
+        return breakinfo
+
+    def filter_inputs_on_filter_restart(self, breakinfo):
+        breakinfo = self.filter_inputs_on_blat_restart(breakinfo)
+
+        # Get readnames
+        coll_inp = f"{self.work_dir}/{self.files['coll_res']}"
+        readnames = []
+        with open(coll_inp, 'r') as f:
+            while True:
+                readname = f.readline().rstrip('\n')
+                if not readname:
+                    break
+                readnames.append(readname[1:])
+                f.readline()
+
+        # Filter blat data
+        blat_inp = f"{self.work_dir}/{self.files['blat']}"
+        blat_out = f"{self.work_dir}/{self.files['blat_res']}"
+        with open(blat_inp, 'r') as fr:
+            with open(blat_out, 'w') as fw:
+                for blat in fr:
+                    if blat.split('\t')[9] in readnames:
+                        fw.write(blat)
+
+        return breakinfo
+
+    def filter_inputs_on_restart(self, breakinfo):
+        if not self.params.readname_filt and not self.params.seq_filt:
+            return breakinfo
+
+        if self.params.restart_blat:
+            breakinfo = self.filter_inputs_on_blat_restart(breakinfo)
+        else:
+            breakinfo = self.filter_inputs_on_filter_restart(breakinfo)
+
+        # Change file names
+        self.files['coll'] = self.files['coll_res']
+        self.files['blat'] = self.files['blat_res']
+
+        return breakinfo
 
     def blat(self):
         self.time_blat.start()
@@ -301,10 +388,10 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
             chr2 = breakinfo['chr2']
             bp2 = breakinfo['bp2']
             strand2 = breakinfo['strand2']
-            mfline = breakinfo['line']
+            mfline = breakinfo['linenr']
             readname = readname[readname.index('_') + 1:]  # Remove the leading unique number
 
-            w1 = f'{readname} fLineNr={mfline}\n'
+            w1 = f'{readname} fusionLineNr={mfline}\n'
             w2 = ' '.join((chr1, bp1, strand1, chr2, bp2, strand2)) + '\n'
             w3 = seq + '\n'
             w = w1 + w2 + w3
@@ -419,7 +506,7 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
         fuseq_path = self.fuseq_path
 
         # Open
-        fr_preproc = open(coll_path, 'r')
+        fr_collect = open(coll_path, 'r')
         fr_blat = open(blat_path, 'r')
         fw_filtmatch = open(filtmatch_path, 'w')
         fw_filtmiss = open(filtmiss_path, 'w')
@@ -429,10 +516,10 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
         is_current = True
         bp_start_extn = self.params.bp_start_extn
         bp_end_extn = self.params.bp_end_extn
-        for row in fr_preproc:
+        for row in fr_collect:
             # Target read
             cur_readname = row.rstrip('\n')[1:]
-            cur_seq = fr_preproc.readline().rstrip('\n')
+            cur_seq = fr_collect.readline().rstrip('\n')
             cur_chr1, cur_chr2, cur_bp1, cur_bp2 = update_chr_bp(rn2idx[cur_readname], breakinfo)
             cur_breakinfo = breakinfo[rn2idx[cur_readname]]
 
@@ -450,13 +537,11 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
                     chr = s[13]             # tname
                     bp_start = int(s[15])   # tstart
                     bp_end = int(s[16])     # tend
-                    assert(bp_start <= bp_end)
                     pos_start_adj = pos_start + 1
                     bp_start_adj = bp_start - bp_start_extn
                     bp_end_adj = bp_end + bp_end_extn  # NOTE: +1 increases the number of matches to Genomon results
                 if readname == cur_readname:
                     # Filter based on chr and tstart-tend range
-                    #if pos_end - pos_start == bp_end - bp_start:
                     if chr == cur_chr1 and bp_start_adj <= cur_bp1 <= bp_end_adj:
                         poses.append((pos_start_adj, pos_end, 1, bp_start + 1, bp_end, chr, strand))
                     elif chr == cur_chr2 and bp_start_adj <= cur_bp2 <= bp_end_adj:
@@ -476,7 +561,7 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
             filter_and_write(fw_filts, cur_breakinfo, cur_readname, cur_seq, poses, other_info)
 
         # Close
-        fr_preproc.close()
+        fr_collect.close()
         fr_blat.close()
         fw_filtmatch.close()
         fw_filtmiss.close()
@@ -529,10 +614,16 @@ cat {filtmatch} {filtmiss} > {fuseq}
             self.delete_work_dir()
 
     def restart(self):
-        breakinfo = self.load_breakinfo()
+        # Save
         self.save_params()
+        # Load
+        breakinfo = self.load_breakinfo()
+        # Restart
+        breakinfo = self.filter_inputs_on_restart(breakinfo)
+        # Blat
         if self.params.restart_blat:
             self.blat()
+        # Filter
         self.blat_filter(breakinfo)
         if self.params.delete_work:
             self.delete_work_dir()
