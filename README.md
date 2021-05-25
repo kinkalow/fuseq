@@ -23,18 +23,18 @@ $ fuseq --version  # check if the installation was successful
 
 fuseq command requires two arguments.
 The first argument specifies the output root directory of Genomon (genomon_root_dir).
-The second argument specifies a fuseq output root directory for storing a breakpoint information, a working directory, etc.
-For more information about the output structure, see the output section.
+The second argument specifies a fuseq output root directory primarily for storing a breakpoint information file.
+For more information about the fuseq output structure, see the output section.
 
 ```bash
 $ fuseq <genomon_root_dir> <fuseq_root_dir>
 ```
 
-A Input file can be modified by an option.
+An input data can be modified by an option.
 The default input file is fusion gene detection file with filtering (merge_fusionfusion_filt.txt).
 It is in a sample directory in \<genomon_root_dir/post_analysis\>.
 If multiple sample directories exist, all fusion files in the samples are treated as input data.
-To input a specific file instead of all files, use the following option.
+However, the next option changes the input to a specific file instead of all files.
 
 ```bash
 # The target is a user-specified file
@@ -43,7 +43,7 @@ $ fuseq <genomon_root_dir> <fuseq_root_dir> --fusion-file </your/path/to/fusion/
 ```
 
 By default, all read lines in a fusion file are given as input.
-Only certain lines can be treated as input data using the following option.
+Only certain reads can be inputted by using the following option.
 
 ```bash
 # The target is user-specified lines
@@ -55,7 +55,7 @@ Only certain lines can be treated as input data using the following option.
 $ fuseq <genomon_root_dir> <fuseq_root_dir> --lines '2,4-6,8'
 ```
 
-Only data matching a specified readname or sequence can be passed to blat input data.
+Only data matching a specified readname or sequence can be extracted.
 
 ```bash
 # Filter with readname
@@ -99,8 +99,8 @@ $ fuseq <genomon_root_dir> <fuseq_root_dir> --blat-opt '-minScore=20 -minMatch=1
 $ fuseq <genomon_root_dir> <fuseq_root_dir> --start 5 --end 10
 ```
 
-fuseq has a restart option that starts from each step because the options for step2 and step3 affect the final output and step1 takes a long time.
-The restart is used when recomputing step2 and step3 with different options.
+fuseq has a restart option that starts from each step.
+The restart is used when recomputing step2 and step3 with different balt option or filtering settings.
 
 ```bash
 # Restart from blat computation (step2)
@@ -136,6 +136,23 @@ $ fuseq --help
 
 Note that fuseq is developed based on Genomon 2.6.3, so fuseq requires the output direcotry structure and file format of that version.
 
+### Configuration file
+
+A configuration file ([fuseq.cfg](https://github.com/kinkalow/fuseq/blob/main/fuseq.cfg)) is used to change the default options of fuseq command.
+It can be downloaded from the root of this repository.
+The file is loaded by placing it in one of the following locations.
+  1. The current directory where fuseq is executed
+  1. The path specified by the FUSEW_CFG environment variable
+  1. ~/.config/fuseq.cfg
+
+fuseq checks for configuration files in order from the top and reads only the first one found.
+
+The contents of the configuration file are described below.
+The lines starting with # represent comments.
+The key names must be the same as the option names.
+However, the names omit the leading double hyphen and replace the rest of the hyphen with an underbar.
+The values are the default value of the options.
+
 ### Output
 
 The output root directory for fuseq has a single or multiple sample directories.
@@ -148,7 +165,7 @@ Here is a description of the breakpoint information file.
 Its output consists of 5 lines for each readname and has the following format:
 
 ```
-readname fLineNr=<line number of fusion.txt>                     |
+readname fusionLineNr=<line number of fusion.txt>                |
 chromesomeA breakpointA strandA chromesomeB breakpointB strandB  | information in Genomon output
 original fusion sequence                                         |
 [sequence for chromesomeA and breakpointA] [sequence range] [breakpoint range] [chromesomeA] [strandA2]  |  information from blat computation
@@ -162,7 +179,7 @@ Note that strandA2 and strandB2 are not necessarily equal to strandA and strandB
 The following is a concrete example of showing breakpoint information about the fusion of a chr3 sequence and another chr3 one.
 
 ```
-SomeReadName fLineNr=2
+SomeReadName fusionLineNr=2
 3 197602647 + 3 197592293 -
 AGCTGTACCTAAATTAACAATGGCGAAATGCAGGCGAAATGTGGAAAATTTCCTAGAAGCTTGCAGAAAAATTGGTGTACCTCAGAGTGATGACAGACCTAATGCTCTATTAAGTTCACCTGCAAC
        CCTAAATTAACAATGGCGAAATGCAGGCGAAATGTGGAAAATTTCCTAGAAGCTTGCAGAAAAATTGGTGTACCTCAG                                          [8,85]   [197602569,197602646] chr3 +
