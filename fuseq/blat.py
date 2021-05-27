@@ -15,9 +15,9 @@ class Blat():
         self.fuseq_path = params.fuseq_path
         self.params = params
         # Input data
-        parent_work = os.path.dirname(work_dir)
-        self.mf_path = f'{parent_work}/fusion.txt'
-        self.star_dir = f'{parent_work}/{os.path.basename(inputs["star_dir"])}'
+        self.input_dir = f'{os.path.dirname(work_dir)}/input'
+        self.mf_path = f'{self.input_dir}/fusion.txt'
+        self.star_dir = f'{self.input_dir}/{os.path.basename(inputs["star_dir"])}'
         # File names
         self.files = {'params': 'params', 'coll': 'collect', 'blat': 'blat',
                       'filtmatch': 'filter_match', 'filtmiss': 'filter_miss',
@@ -63,6 +63,8 @@ class Blat():
     #
 
     def create_symlinks(self):
+        # Create input directory
+        os.makedirs(self.input_dir, exist_ok=True)
         # Remove files
         if os.path.lexists(self.mf_path):
             os.remove(self.mf_path)
@@ -98,9 +100,10 @@ class Blat():
                 if row_mf[1] not in chrs or row_mf[4] not in chrs:
                     continue
                 [sample, chr1, bp1, strand1, chr2, bp2, strand2] = row_mf[0:7]
+                [gene1, junc1, gene2, junc2] = row_mf[8:12]
                 bp1 = str(int(bp1) + 1) if strand1 == '+' else str(int(bp1) - 1)
                 bp2 = str(int(bp2) + 1) if strand2 == '+' else str(int(bp2) - 1)
-                breakinfo.append([sample, chr1, bp1, strand1, chr2, bp2, strand2])
+                breakinfo.append([sample, chr1, bp1, strand1, gene1, junc1, chr2, bp2, strand2, gene2, junc2])
         return breakinfo
 
     def collect(self, breakinfo):
@@ -155,12 +158,12 @@ echo -n "$cnt"
             head = heads[i_proc]
             tail = heads[i_proc + 1]
             digit = len(str(coll_procs).split('.')[0])
-            out_path = f'{self.work_dir}/{str(i_proc).zfill(digit)}'
+            out_path = f'{self.work_dir}/collect{str(i_proc).zfill(digit)}'
             if os.path.exists(out_path):
                 os.remove(out_path)
 
             jun_dic = {}
-            for step, [sample, chr1, bp1, strand1, chr2, bp2, strand2] in enumerate(breakinfo[head:tail]):
+            for step, [sample, chr1, bp1, strand1, gene1, junc1, chr2, bp2, strand2, gene2, junc2] in enumerate(breakinfo[head:tail]):
                 linenr = 1 + (head + 1) + step  # first 1: header line, second 1: starting with 1
                 if sample not in jun_dic:
                     jun_dic[sample] = glob.glob(f'{self.star_dir}/{sample}/*.junction')[0]
@@ -173,8 +176,8 @@ echo -n "$cnt"
                 results.append({'linenr': linenr, 'ret': p.returncode,
                                 'err': err.decode(), 'cnt': out.decode(),
                                 'sample': sample,
-                                'chr1': chr1, 'bp1': bp1, 'strand1': strand1,
-                                'chr2': chr2, 'bp2': bp2, 'strand2': strand2})
+                                'chr1': chr1, 'bp1': bp1, 'strand1': strand1, 'gene1': gene1, 'junc1': junc1,
+                                'chr2': chr2, 'bp2': bp2, 'strand2': strand2, 'gene2': gene2, 'junc2': junc2})
             sender.send((out_path, results))
             sender.close()
 
@@ -385,16 +388,21 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
             chr1 = breakinfo['chr1']
             bp1 = breakinfo['bp1']
             strand1 = breakinfo['strand1']
+            gene1 = breakinfo['gene1']
+            junc1 = breakinfo['junc1']
             chr2 = breakinfo['chr2']
             bp2 = breakinfo['bp2']
+            gene2 = breakinfo['gene2']
+            junc2 = breakinfo['junc2']
             strand2 = breakinfo['strand2']
             mfline = breakinfo['linenr']
             readname = readname[readname.index('_') + 1:]  # Remove the leading unique number
 
             w1 = f'{readname} fusionLineNr={mfline}\n'
-            w2 = ' '.join((chr1, bp1, strand1, chr2, bp2, strand2)) + '\n'
-            w3 = seq + '\n'
-            w = w1 + w2 + w3
+            w2 = ' '.join((chr1, bp1, strand1, gene1, junc1)) + '\n'
+            w3 = ' '.join((chr2, bp2, strand2, gene2, junc2)) + '\n'
+            w4 = seq + '\n'
+            w = w1 + w2 + w3 + w4
             if poses_filt:
                 fw = fws[0]
                 itemitems = [[f'{" "*(s-1)}{seq[s-1:e]}', f'[{s},{e}]', f'[{bps},{bpe}]', f'chr{chr}', f'{strand}']
@@ -404,10 +412,10 @@ grep '^>' {inp_file} |  sed -e 's/^>//'
                 lenlens = [[len(str) for str in strs] for i, strs in enumerate(strstrs)]
                 maxlens = [max(lens) for lens in lenlens]
                 spsps = [[maxlens[i] - le for le in lens] for i, lens in enumerate(lenlens)]
-                w4 = ''
+                w5 = ''
                 for i, items in enumerate(itemitems):
-                    w4 += f'{items[0]}{" "*spsps[0][i]} {items[1]}{" "*spsps[1][i]} {items[2]}{" "*spsps[2][i]} {items[3]}{" "*spsps[3][i]} {items[4]}\n'
-                w += w4
+                    w5 += f'{items[0]}{" "*spsps[0][i]} {items[1]}{" "*spsps[1][i]} {items[2]}{" "*spsps[2][i]} {items[3]}{" "*spsps[3][i]} {items[4]}\n'
+                w += w5
             else:
                 fw = fws[1]
             #w += str(other_info) + '\n'

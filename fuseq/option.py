@@ -144,7 +144,7 @@ class Option:
         # New Arg
         args.is_restart = True if args.restart_blat or args.restart_filter else False
         args.fuseq_filename = 'fusion_sequence.txt'
-        args.work_dirname = 'work'
+        args.work_dirname = 'work_restart'
 
     def refer(self):
         return self.args

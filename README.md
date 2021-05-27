@@ -1,6 +1,6 @@
 ## Fusion sequence
 
-fuseq is a command line tool that provides a visual representation of where the breakpoints are located in the fusion gene sequences analyzed by [Genomon](https://genomon-project.github.io/GenomonPagesR/).
+fuseq is a command line tool that provides breakpoint information in fusion gene sequences analyzed by [Genomon](https://genomon-project.github.io/GenomonPagesR/).
 That breakpoints can be obtained by [Blat](https://genome.ucsc.edu/cgi-bin/hgBlat).
 So, fuseq first collects the readnames and sequences from a Genomon result and passes them as input data for Blat.
 Blat outputs multiple candidates, but fuseq only extracts candidates that match the Genomon result and finally writes the breakpoint information to a file.
@@ -157,17 +157,18 @@ The values are the default value of the options.
 
 The output root directory for fuseq has a single or multiple sample directories.
 The directory names are the same as Genomon output samples (\<genomon_root_dir/post_analysis/samples\>).
-Each sample directory consists of a breakpoint information file (fusion_sequence.txt), input files (fusion.txt and star), and a working directory (work).
+Each sample directory consists of a breakpoint information file (fusion_sequence.txt), input files (fusion.txt and star), and a working directory (work_restart).
 The input files are symbolic links to a fusion file and a star directory in a Genomon output directory unless --lines option is used.
 The working directory includes the intermediate files required for restart.
 
 Here is a description of the breakpoint information file.
-Its output consists of 5 lines for each readname and has the following format:
+Its output consists of 6 lines for each readname and has the following format:
 
 ```
-readname fusionLineNr=<line number of fusion.txt>                |
-chromesomeA breakpointA strandA chromesomeB breakpointB strandB  | information in Genomon output
-original fusion sequence                                         |
+[readname] [fusionLineNr=<line number of fusion.txt>]                                          |
+[chromesomeA] [breakpointA] [strandA] [gene overlappingA] [exon-intron junction overlappingA]  |  information in Genomon output
+[chromesomeB] [breakpointB] [strandB] [gene overlappingB] [exon-intron junction overlappingB]  |
+[fusion sequence]                                                                              |
 [sequence for chromesomeA and breakpointA] [sequence range] [breakpoint range] [chromesomeA] [strandA2]  |  information from blat computation
 [sequence for chromesomeB and breakpointB] [sequence range] [breakpoint range] [chromesomeB] [strandB2]  |
 
@@ -180,7 +181,8 @@ The following is a concrete example of showing breakpoint information about the 
 
 ```
 SomeReadName fusionLineNr=2
-3 197602647 + 3 197592293 -
+3 197602647 + LRCH3 LRCH3.start
+3 197592293 - ENST00000536618.1;ENST00000414675.2;ENST00000438796.2;ENST00000441090.2;ENST00000425562.2 ENST00000536618.1.end;ENST00000441090.2.end;ENST00000414675.2.end;ENST00000425562.2.end;ENST00000438796.2.end
 AGCTGTACCTAAATTAACAATGGCGAAATGCAGGCGAAATGTGGAAAATTTCCTAGAAGCTTGCAGAAAAATTGGTGTACCTCAGAGTGATGACAGACCTAATGCTCTATTAAGTTCACCTGCAAC
        CCTAAATTAACAATGGCGAAATGCAGGCGAAATGTGGAAAATTTCCTAGAAGCTTGCAGAAAAATTGGTGTACCTCAG                                          [8,85]   [197602569,197602646] chr3 +
                                                                                   CAGAGTGATGACAGACCTAATGCTCTATTAAGTTCACCTGCAAC [83,126] [197592291,197592334] chr3 +
@@ -189,7 +191,7 @@ AGCTGTACCTAAATTAACAATGGCGAAATGCAGGCGAAATGTGGAAAATTTCCTAGAAGCTTGCAGAAAAATTGGTGTAC
 ```
 
 The first three lines show the data from Genomon result, and the fourth and fifth lines show the Blat computation result.
-The sequence on line 4 corresponds to chromesomeA and breakpointA on line 2, and the sequence on line 5 corresponds to chromesomeB and breakpointB.
-The lines 4 and 5 print only if the chromesomes obtained by Genomon and Blat are consistent and the breakpoint obtained by Genomon is close to the breakpoint range obtained by Blat.
+The sequence on line 5 corresponds to chromesomeA and breakpointA, and the sequence on line 6 corresponds to chromesomeB and breakpointB.
+The lines 5 and 6 print only if the chromesomes obtained by Genomon and Blat are consistent and the breakpoint obtained by Genomon is close to the breakpoint range obtained by Blat.
 Therefore, for a fusion sequence where blat and Genomon results do not match, the output consists of three lines.
 These three lines are output at the end of the file (fusion_sequence.txt).
