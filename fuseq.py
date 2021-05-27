@@ -2,7 +2,7 @@
 
 from fuseq.option import Option
 from fuseq.genomon import Genomon
-from fuseq.blat import Blat
+from fuseq.pipeline import Pipeline
 from fuseq.checker import Checker
 
 
@@ -26,12 +26,12 @@ def main():
         params.inputs = inputs
 
         # Run Blat
-        blat = Blat(inputs, work_dir, fuseq_path, params)
+        pipeline = Pipeline(params)
         if params.is_restart:
             Checker.isdir(work_dir)
-            blat.restart()
+            pipeline.restart()
         else:
-            blat.run()
+            pipeline.run()
 
 
 if __name__ == '__main__':
