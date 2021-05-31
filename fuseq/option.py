@@ -8,11 +8,11 @@ from fuseq.checker import Checker
 
 class Option:
     def __init__(self):
-        self._parse()
-        self._check()
-        self._create()
+        self.__parse()
+        self.__check()
+        self.__create()
 
-    def _config(self, parser):
+    def __config(self, parser):
         cfg_file = 'fuseq.cfg'
         cfg1 = f'os.path.abspath(".")/{cfg_file}'
         cfg2 = os.environ["FUSEQ_CFG"] if 'FUSEQ_CFG' in os.environ else ''
@@ -62,7 +62,7 @@ class Option:
                 print(f'[Error] Invalid key "{key}" in config file')
                 exit(1)
 
-    def _parse(self):
+    def __parse(self):
         prog = 'fuseq'
 
         parser = argparse.ArgumentParser(prog=prog)
@@ -86,14 +86,14 @@ class Option:
         parser.add_argument('--version', action='version', version=f'{prog}: {__version__}')
         self.args = parser.parse_args()
 
-        self._config(parser)
+        self.__config(parser)
 
-    def _check(self):
+    def __check(self):
         args = self.args
         Checker.isdir(args.genomon_root_dir)
         Checker.isfile(args.reference)
 
-    def _get_lines(self, line_str):
+    def __get_lines(self, line_str):
         """line_str='1,5,3,8-10,12' => [1, 3, 5, 8, 9, 10, 12]"""
         if not line_str:
             return []
@@ -114,7 +114,7 @@ class Option:
             lines.insert(0, 1)
         return lines
 
-    def _create(self):
+    def __create(self):
         args = self.args
 
         # Change Args
@@ -127,7 +127,7 @@ class Option:
         args.bp_end_extn = args.end
         args.bp_start_extn = args.start
         args.delete_work = not args.no_delete_work
-        args.mf_lines = self._get_lines(args.lines)
+        args.mf_lines = self.__get_lines(args.lines)
         args.print_time = args.time
         args.readname_filt = args.readname
         args.seq_filt = args.sequence

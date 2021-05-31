@@ -14,7 +14,11 @@ class Pipeline(Base):
         self.params = params
         self.breakinfo_path = f'{self.params.work_dir}/breakinfo'
 
-    def save_params(self):
+    #
+    # Utility
+    #
+
+    def __save_params(self):
         path = f'{self.params.work_dir}/{self.files["params"]}'
         with open(path, 'w') as f:
             d = vars(self.params)
@@ -23,17 +27,17 @@ class Pipeline(Base):
                 space = ' ' * (max_len - len(key))
                 f.write(f'{key}{space}: {val}\n')
 
-    def save_breakinfo(self, breakinfo):
+    def __save_breakinfo(self, breakinfo):
         with open(self.breakinfo_path, 'w') as f:
             json.dump(breakinfo, f)
 
-    def load_breakinfo(self):
+    def __load_breakinfo(self):
         Checker.isfile(self.breakinfo_path)
         with open(self.breakinfo_path) as f:
             breakinfo = json.load(f)
         return breakinfo
 
-    def delete_work_dir(self, make_work_dir=False):
+    def __delete_work_dir(self, make_work_dir=False):
         shutil.rmtree(self.params.work_dir, ignore_errors=True)
         if make_work_dir:
             os.makedirs(self.params.work_dir)
@@ -42,7 +46,7 @@ class Pipeline(Base):
     # Restart
     #
 
-    def filter_inputs_on_blat_restart(self, breakinfo):
+    def __on_blat_restart(self, breakinfo):
         coll_inp = f"{self.params.work_dir}/{self.files['coll']}"
         coll_out = f"{self.params.work_dir}/{self.files['coll_res']}"
 
@@ -88,8 +92,8 @@ class Pipeline(Base):
 
         return breakinfo
 
-    def filter_inputs_on_filter_restart(self, breakinfo):
-        breakinfo = self.filter_inputs_on_blat_restart(breakinfo)
+    def __on_blat_filter_restart(self, breakinfo):
+        breakinfo = self.__on_blat_restart(breakinfo)
 
         # Get readnames
         coll_inp = f"{self.params.work_dir}/{self.files['coll_res']}"
@@ -113,14 +117,14 @@ class Pipeline(Base):
 
         return breakinfo
 
-    def filter_inputs_on_restart(self, breakinfo):
+    def __filter_on_restart(self, breakinfo):
         if not self.params.readname_filt and not self.params.seq_filt:
             return breakinfo
 
         if self.params.restart_blat:
-            breakinfo = self.filter_inputs_on_blat_restart(breakinfo)
+            breakinfo = self.__on_blat_restart(breakinfo)
         else:
-            breakinfo = self.filter_inputs_on_filter_restart(breakinfo)
+            breakinfo = self.__on_blat_filter_restart(breakinfo)
 
         # Change file names
         self.files['coll'] = self.files['coll_res']
@@ -133,36 +137,30 @@ class Pipeline(Base):
     #
 
     def run(self):
-        # Clear and Save
-        self.delete_work_dir(make_work_dir=True)
-        self.save_params()
+        # Preprocess
+        self.__delete_work_dir(make_work_dir=True)
+        self.__save_params()
         # Collect
-        coll = Collection(self.params)
-        breakinfo = coll.run()
-        self.save_breakinfo(breakinfo)
+        breakinfo = Collection(self.params).run()
+        self.__save_breakinfo(breakinfo)
         # Blat
-        blat = Blat(self.params)
-        blat.run()
+        Blat(self.params).run()
         # Filter
-        blatfilt = BlatFilter(self.params, breakinfo)
-        blatfilt.run()
-        # Delete
+        BlatFilter(self.params, breakinfo).run()
+        # Postprocess
         if self.params.delete_work:
-            self.delete_work_dir()
+            self.__delete_work_dir()
 
     def restart(self):
-        # Save
-        self.save_params()
-        # Load
-        breakinfo = self.load_breakinfo()
-        # Restart
-        breakinfo = self.filter_inputs_on_restart(breakinfo)
+        # Preprocess
+        self.__save_params()
+        breakinfo = self.__load_breakinfo()
+        breakinfo = self.__filter_on_restart(breakinfo)
         # Blat
         if self.params.restart_blat:
-            blat = Blat(self.params)
-            blat.run()
+            Blat(self.params).run()
         # Filter
-        blatfilt = BlatFilter(self.params, breakinfo)
-        blatfilt.run()
+        BlatFilter(self.params, breakinfo).run()
+        # Postprocess
         if self.params.delete_work:
-            self.delete_work_dir()
+            self.__delete_work_dir()
