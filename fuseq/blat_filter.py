@@ -147,10 +147,10 @@ class BlatFilter(Base):
 #!/bin/bash
 set -eu
 cd {work_dir}
-grep '^>' {inp_file} |  sed -e 's/^>//'
+grep '^>' {inp_file} | sed -e 's/^>//'
 '''.format(work_dir=self.params.work_dir, inp_file=self.files['coll'])
-        readnames = self.run_cmd(cmd, 'grep')
-        readnames = readnames.strip('\n').split('\n')
+        readnames = self._run_cmd(cmd, 'grep')
+        readnames = readnames.split('\n')
 
         # Check
         cnts = [int(d.get('cnt')) for d in self.breakinfo]
@@ -242,7 +242,7 @@ set -eu
 cd {work_dir}
 cat {filtmatch} {filtmiss} > {fuseq}
 '''.format(work_dir=self.params.work_dir, fuseq=fuseq_path, filtmatch=filtmatch_path, filtmiss=filtmiss_path)
-            self.run_cmd(cmd, 'cat_filtmatch_filtmiss')
+            self._run_cmd(cmd, 'cat_filtmatch_filtmiss')
         elif filtmatch_exists:
             shutil.move(filtmatch_path, fuseq_path)
         elif filtmiss_exists:

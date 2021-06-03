@@ -17,19 +17,24 @@ def main():
 
         # Paths
         work_dir = f'{params.fuseq_root_dir}/{mf_dir}/{params.work_dirname}'
+        skwork_dir = f'{params.fuseq_root_dir}/{mf_dir}/{params.work_dirname}/{params.skwork_dirname}'
         fuseq_path = f'{params.fuseq_root_dir}/{mf_dir}/{params.fuseq_filename}'
         inputs = {'mf_path': mf_path, 'star_dir': genomon.star_dir}
 
         # Add to params
         params.work_dir = work_dir
+        params.skwork_dir = skwork_dir
         params.fuseq_path = fuseq_path
         params.inputs = inputs
+        params.num_parallel_blat = 100  # FIXME:
 
         # Run Blat
         pipeline = Pipeline(params)
         if params.is_restart:
             Checker.isdir(work_dir)
             pipeline.restart()
+        elif params.is_shirokane:
+            pipeline.run_on_shirokane()
         else:
             pipeline.run()
 

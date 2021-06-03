@@ -37,10 +37,16 @@ class Pipeline(Base):
             breakinfo = json.load(f)
         return breakinfo
 
-    def __delete_work_dir(self, make_work_dir=False):
-        shutil.rmtree(self.params.work_dir, ignore_errors=True)
+    def __delete_dir(self, directory, make_work_dir):
+        shutil.rmtree(directory, ignore_errors=True)
         if make_work_dir:
-            os.makedirs(self.params.work_dir)
+            os.makedirs(directory)
+
+    def __delete_work_dir(self, make_work_dir=False):
+        self.__delete_dir(self.params.work_dir, make_work_dir)
+
+    def __delete_shirokane_dir(self, make_work_dir=False):
+        self.__delete_dir(self.params.skwork_dir, make_work_dir)
 
     #
     # Restart
@@ -140,12 +146,10 @@ class Pipeline(Base):
         # Preprocess
         self.__delete_work_dir(make_work_dir=True)
         self.__save_params()
-        # Collect
+        # Main
         breakinfo = Collection(self.params).run()
         self.__save_breakinfo(breakinfo)
-        # Blat
         Blat(self.params).run()
-        # Filter
         BlatFilter(self.params, breakinfo).run()
         # Postprocess
         if self.params.delete_work:
@@ -156,10 +160,25 @@ class Pipeline(Base):
         self.__save_params()
         breakinfo = self.__load_breakinfo()
         breakinfo = self.__filter_on_restart(breakinfo)
-        # Blat
+        # Main
         if self.params.restart_blat:
             Blat(self.params).run()
-        # Filter
+        BlatFilter(self.params, breakinfo).run()
+        # Postprocess
+        if self.params.delete_work:
+            self.__delete_work_dir()
+
+    def run_on_shirokane(self):
+        # Preprocess
+        self.__delete_work_dir(make_work_dir=True)
+        self.__delete_shirokane_dir(make_work_dir=True)
+        self.__save_params()
+        #breakinfo = self.__load_breakinfo()
+        #breakinfo = self.__filter_on_restart(breakinfo)
+        # Main
+        breakinfo = Collection(self.params).run()
+        self.__save_breakinfo(breakinfo)
+        Blat(self.params).run_batch()
         BlatFilter(self.params, breakinfo).run()
         # Postprocess
         if self.params.delete_work:

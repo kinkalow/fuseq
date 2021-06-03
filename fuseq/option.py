@@ -79,6 +79,7 @@ class Option:
         parser.add_argument('--no-use-filt', default=False, action='store_true', help='Use merge_fusionfusion.txt instead of merge_fusionfusion_filt.txt')
         parser.add_argument('--readname', default='', type=str, help='Filtering with readname')
         parser.add_argument('--sequence', default='', type=str, help='Filtering with sequence')
+        parser.add_argument('--shirokane', default=False, action='store_true', help='Compute on Shirokane')
         parser.add_argument('--start', default=0, type=int, help='Extend the start position of breakpoints at Blat filtering')
         parser.add_argument('--end', default=1, type=int, help='Extend the end position of breakpoints at Blat filtering')
         parser.add_argument('--reference', default='/share/pub/genomon/.genomon_local/genomon_pipeline-2.6.3/database/GRCh37/GRCh37.fa', type=str, help='Reference path')
@@ -131,6 +132,7 @@ class Option:
         args.print_time = args.time
         args.readname_filt = args.readname
         args.seq_filt = args.sequence
+        args.is_shirokane = args.shirokane
         args.use_filt = False if args.no_use_filt else True
         del args.end
         del args.start
@@ -139,12 +141,14 @@ class Option:
         del args.time
         del args.readname
         del args.sequence
+        del args.shirokane
         del args.no_use_filt
 
         # New Arg
         args.is_restart = True if args.restart_blat or args.restart_filter else False
         args.fuseq_filename = 'fusion_sequence.txt'
         args.work_dirname = 'work_restart'
+        args.skwork_dirname = 'shirokane'
 
     def refer(self):
         return self.args

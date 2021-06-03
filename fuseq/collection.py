@@ -161,7 +161,7 @@ echo -n "$cnt"
             cmd = cmd_template.format(linenr=linenr, chr1=chr1, bp1=bp1, chr2=chr2, bp2=bp2,
                                       jun_path=jun_path, out_path=out_path,
                                       readname_filt_cmd=readname_filt_cmd, seq_filt_cmd=seq_filt_cmd)
-            out, err, ret = self.run_cmd(cmd, ignore_err=True)
+            out, err, ret = self._run_cmd(cmd, ignore_err=True)
             results.append({'linenr': linenr, 'ret': ret, 'err': err, 'cnt': out, 'sample': sample,
                             'chr1': chr1, 'bp1': bp1, 'strand1': strand1, 'gene1': gene1, 'junc1': junc1,
                             'chr2': chr2, 'bp2': bp2, 'strand2': strand2, 'gene2': gene2, 'junc2': junc2})
@@ -176,7 +176,7 @@ set -eu
 cd {work_dir}
 cat {inp_files} > {out_file}
 '''.format(work_dir=self.params.work_dir, inp_files=inp_files, out_file=self.out_file)
-        self.run_cmd(cmd, 'cat_coll_files')
+        self._run_cmd(cmd, 'cat_coll_files')
 
     @Timer('collection')
     def run(self):
