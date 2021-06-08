@@ -170,14 +170,14 @@ class Pipeline(Base):
 
     def run_on_shirokane(self):
         # Preprocess
-        #self.__delete_work_dir(make_work_dir=True)
-        #self.__delete_shirokane_dir(make_work_dir=True)
-        #self.__save_params()
-        breakinfo = self.__load_breakinfo()
-        breakinfo = self.__filter_on_restart(breakinfo)
+        self.__delete_work_dir(make_work_dir=True)
+        self.__delete_shirokane_dir(make_work_dir=True)
+        self.__save_params()
+        #breakinfo = self.__load_breakinfo()
+        #breakinfo = self.__filter_on_restart(breakinfo)
         # Main
-        #breakinfo = Collection(self.params).run()
-        #self.__save_breakinfo(breakinfo)
+        breakinfo = Collection(self.params).run()
+        self.__save_breakinfo(breakinfo)
         PBlat(self.params).run_batch()
         BlatFilter(self.params, breakinfo).run()
         # Postprocess

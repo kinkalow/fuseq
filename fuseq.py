@@ -26,7 +26,6 @@ def main():
         params.skwork_dir = skwork_dir
         params.fuseq_path = fuseq_path
         params.inputs = inputs
-        params.num_blat_parallels = 100  # FIXME:
 
         # Run Blat
         pipeline = Pipeline(params)

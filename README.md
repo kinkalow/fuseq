@@ -88,8 +88,12 @@ These settings can be adjusted using the following options.
 
 ```bash
 # Change the options passed to blat command
+# Argument value must not begin with a hyphen
 # This option affects step2
-$ fuseq <genomon_root_dir> <fuseq_root_dir> --blat-opt '-minScore=20 -minMatch=1'
+$ fuseq <genomon_root_dir> <fuseq_root_dir> --blat-opt 'minScore=20'            # OK
+$ fuseq <genomon_root_dir> <fuseq_root_dir> --blat-opt '-minScore=20'           # NG
+$ fuseq <genomon_root_dir> <fuseq_root_dir> --blat-opt 'minScore=20 -maxGap=3'  # OK
+$ fuseq <genomon_root_dir> <fuseq_root_dir> --blat-opt 'minScore=20 maxGap=3'   # OK
 
 # Expand the filtering range for breakpoints
 # This option affects step3
@@ -126,6 +130,19 @@ The database can optionally be changed.
 ```bash
 # Change reference data
 $ fuseq <genomon_root_dir> <fuseq_root_dir> --reference </your/path/to/reference/genome>
+```
+
+On Shirokane, the process of blat in step2 can be computed in parallel.
+The number of parallels can be changed with the following option.
+Note that computation on Shirokane requires --shirokane option.
+
+```bash
+# Computation on Shirokane
+$ fuseq <genomon_root_dir> <fuseq_root_dir> --shirokane
+
+# Change the number of parallels of blat processing
+# Available for Shirokane
+$ fuseq <genomon_root_dir> <fuseq_root_dir> --shirokane --blat-jobs 10
 ```
 
 See help for short names of options and more options.

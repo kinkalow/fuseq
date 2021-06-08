@@ -76,13 +76,17 @@ class Option:
         parser.add_argument('-w', '--no-delete-work', default=False, action='store_true', help='Do not delete work directory')
         parser.add_argument('-B', '--restart-blat', default=False, action='store_true', help='Restart from Blat')
         parser.add_argument('-F', '--restart-filter', default=False, action='store_true', help='Restart from Blat filter')
+        #
         parser.add_argument('--no-use-filt', default=False, action='store_true', help='Use merge_fusionfusion.txt instead of merge_fusionfusion_filt.txt')
         parser.add_argument('--readname', default='', type=str, help='Filtering with readname')
         parser.add_argument('--sequence', default='', type=str, help='Filtering with sequence')
-        parser.add_argument('--shirokane', default=False, action='store_true', help='Compute on Shirokane')
         parser.add_argument('--start', default=0, type=int, help='Extend the start position of breakpoints at Blat filtering')
         parser.add_argument('--end', default=1, type=int, help='Extend the end position of breakpoints at Blat filtering')
         parser.add_argument('--reference', default='/share/pub/genomon/.genomon_local/genomon_pipeline-2.6.3/database/GRCh37/GRCh37.fa', type=str, help='Reference path')
+        # Options on Shirokane
+        parser.add_argument('--shirokane', default=False, action='store_true', help='Compute on Shirokane')
+        parser.add_argument('--blat-jobs', default=100, type=int, help='Number of array jobs when computing blat on Shirokane')
+        #
         parser.add_argument('--time', default=False, action='store_true', help='Display elapsed time')
         parser.add_argument('--version', action='version', version=f'{prog}: {__version__}')
         self.args = parser.parse_args()
@@ -93,6 +97,8 @@ class Option:
         args = self.args
         Checker.isdir(args.genomon_root_dir)
         Checker.isfile(args.reference)
+        if args.shirokane:
+            Checker.isshirokane()
 
     def __get_lines(self, line_str):
         """line_str='1,5,3,8-10,12' => [1, 3, 5, 8, 9, 10, 12]"""
@@ -118,17 +124,21 @@ class Option:
     def __create(self):
         args = self.args
 
-        # Change Args
+        # Change argument values
         args.fuseq_root_dir = os.path.abspath(args.fuseq_root_dir)
         args.fusion_file = os.path.abspath(args.fusion_file) if args.fusion_file else ''
         args.genomon_root_dir = os.path.abspath(args.genomon_root_dir)
         args.reference = os.path.abspath(args.reference)
         args.star_dir = os.path.abspath(args.star_dir) if args.star_dir else ''
-        #
+        args.blat_opt = self.__modify_blat_opt(args.blat_opt)
+
+        # Change argument names
+        # Some of them change the values
         args.bp_end_extn = args.end
         args.bp_start_extn = args.start
         args.delete_work = not args.no_delete_work
         args.mf_lines = self.__get_lines(args.lines)
+        args.num_blat_parallels = args.blat_jobs
         args.print_time = args.time
         args.readname_filt = args.readname
         args.seq_filt = args.sequence
@@ -138,17 +148,25 @@ class Option:
         del args.start
         del args.no_delete_work
         del args.lines
+        del args.blat_jobs
         del args.time
         del args.readname
         del args.sequence
         del args.shirokane
         del args.no_use_filt
 
-        # New Arg
+        # Create new argument
         args.is_restart = True if args.restart_blat or args.restart_filter else False
         args.fuseq_filename = 'fusion_sequence.txt'
         args.work_dirname = 'work_restart'
         args.skwork_dirname = 'shirokane'
+
+    def __modify_blat_opt(self, blat_opt):
+        if not blat_opt:
+            return
+        blat_opts = [opt if opt[0] == '-' else f'-{opt}'
+                     for opt in re.split(' +', blat_opt.strip(' '))]
+        return ' '.join(blat_opts)
 
     def refer(self):
         return self.args

@@ -21,6 +21,15 @@ class Checker:
             exit(1)
 
     @staticmethod
+    def isshirokane():
+        cmd = 'type qsub > /dev/null'
+        p = subprocess.Popen(cmd, shell=True)
+        p.communicate()
+        if p.returncode:
+            print('Not in Shirokane')
+            exit(1)
+
+    @staticmethod
     def has_tools():
         cmd = 'type blat > /dev/null'
         p = subprocess.Popen(cmd, shell=True)
