@@ -32,7 +32,7 @@ class BlatFilter(Base):
         w4 = seq + '\n'
         w = w1 + w2 + w3 + w4
         if poses_filt:
-            fw = fws[0]
+            fw = fws['filtmatch']
             itemitems = [[f'{" "*(s-1)}{seq[s-1:e]}', f'[{s},{e}]', f'[{bps},{bpe}]', f'chr{chr}', f'{strand}']
                          for s, e, _, bps, bpe, chr, strand in poses_filt]
             strstrs = [[items[0] for items in itemitems], [items[1] for items in itemitems],
@@ -45,11 +45,8 @@ class BlatFilter(Base):
                 w5 += f'{items[0]}{" "*spsps[0][i]} {items[1]}{" "*spsps[1][i]} {items[2]}{" "*spsps[2][i]} {items[3]}{" "*spsps[3][i]} {items[4]}\n'
             w += w5
         else:
-            fw = fws[1]
-        #w += str(other_info) + '\n'
+            fw = fws['filtmiss']
         fw.write(w + '\n')
-        #print(w, end='')
-        #print('-' * 126)
 
     def __pos_filter(self, poses):
         '''Filter base on qstat-qend range'''
@@ -93,20 +90,80 @@ class BlatFilter(Base):
 
         return poses_filt
 
-    def pos_sort(self, poses_filt, breakinfo):
+    def __check_pos(self, poses_filt, fws, breakinfo, readname, seq, poses, other_info):
+        if not poses_filt:
+            return poses_filt
+
+        # Check for error or warning
+        is_err = False
+        is_war = False
+        one_or_two_set = {p[2] for p in poses_filt}
+        if len(one_or_two_set) != 2:
+            is_err = True
+        else:
+            one_or_two_set = set()
+            for i, pos in enumerate(poses_filt):
+                pos_diff = pos[1] - pos[0]
+                bp_diff = pos[4] - pos[3]
+                if pos_diff == bp_diff:
+                    one_or_two_set.add(pos[2])
+            if len(one_or_two_set) != 2:
+                is_war = True
+
+        # Return if everything is okay
+        if not is_err and not is_war:
+            return poses_filt
+
+        # Here is error or warning
+
+        # Information about positions
+        poses = [p for p in poses_filt if p[2] == 1] + [p for p in poses_filt if p[2] == 2]
+        w_sent = []
+        for p in poses:
+            w1 = f'Type:{p[2]} '
+            w2 = f'Qstart:{p[0]} Qend:{p[1]} Tstart:{p[4]} Tend:{p[3]} '
+            w3 = f'Qdiff:{p[1]-p[0]} Tdiff:{p[4]-p[3]}'
+            w_sent.append(w1 + w2 + w3)
+        w_split = [w.split(' ') for w in w_sent]
+        w_len = [[len(w) for w in ws] for ws in w_split]
+        r_axis0 = range(len(w_split))
+        r_axis1 = range(len(w_split[0]))
+        w_max = [max([w_len[j][i] for j in r_axis0]) for i in r_axis1]
+        w_space = [[w_max[i] - len(w) for i, w in enumerate(ws)] for ws in w_split]
+        w_sent = [' '.join([w_split[i][j] + ' ' * w_space[i][j] for j in r_axis1]) for i in r_axis0]
+        w = '\n'.join([w.rstrip(' ') for w in w_sent])
+
+        # Print
+        if self.params.print_pos_err and (is_err or is_war):
+            if is_err:
+                print(f'[Warning] Only type{list(one_or_two_set)[0]} exists')
+            else:
+                print('[Warning] Qpos diff and Tpos diff do not match')
+            print(w)
+
+        # Othre information
+        w += '\n'
+        w += f'readname   | {str(readname)}\n'
+        w += f'sequence   | {str(seq)}\n'
+        w += f'poses      | {str(poses)}\n'
+        w += f'poses_filt | {str(poses_filt)}\n'
+        w += f'other_info | {str(other_info)}\n'
+        w += '\n'
+
+        # Write to file
+        key = 'filterr' if is_err else'filtwar'
+        fws[key].write(w)
+
+        return [] if is_err else poses_filt
+
+    def __pos_sort(self, poses_filt, breakinfo):
         if not poses_filt:
             return poses_filt, breakinfo
-
-        # Check
-        one_or_two_list = [p[2] for p in poses_filt]
-        if len(set(one_or_two_list)) != 2:
-            print('[Error] poses_filt has some problem')
-            print(poses_filt)
-            exit(1)
 
         # Sort position and break information
         # if one_or_two == 1, sequence1 is displayed first before sequence2
         # if one_or_two == 2, sequence2 is displayed first before sequence1
+        one_or_two_list = [p[2] for p in poses_filt]
         starts = [p[0] for p in poses_filt]
         idx_min = starts.index(min(starts))
         is_one_first = True if poses_filt[idx_min][2] == 1 else False
@@ -130,7 +187,8 @@ class BlatFilter(Base):
 
     def __filter_and_write(self, fws, breakinfo, readname, seq, poses, other_info):
         poses_filt = self.__pos_filter(poses)
-        poses_filt, breakinfo = self.pos_sort(poses_filt, breakinfo)
+        poses_filt = self.__check_pos(poses_filt, fws, breakinfo, readname, seq, poses, other_info)
+        poses_filt, breakinfo = self.__pos_sort(poses_filt, breakinfo)
         self.__write_to_file(fws, breakinfo, readname, seq, poses_filt, other_info)
         poses.clear()
 
@@ -169,6 +227,8 @@ grep '^>' {inp_file} | sed -e 's/^>//'
         coll_path = f'{self.params.work_dir}/{self.files["coll"]}'
         filtmatch_path = f'{self.params.work_dir}/{self.files["filtmatch"]}'
         filtmiss_path = f'{self.params.work_dir}/{self.files["filtmiss"]}'
+        filterr_path = f'{self.params.work_dir}/{self.files["filterr"]}'
+        filtwar_path = f'{self.params.work_dir}/{self.files["filtwar"]}'
         fuseq_path = self.params.fuseq_path
 
         # Open
@@ -176,7 +236,10 @@ grep '^>' {inp_file} | sed -e 's/^>//'
         fr_blat = open(blat_path, 'r')
         fw_filtmatch = open(filtmatch_path, 'w')
         fw_filtmiss = open(filtmiss_path, 'w')
-        fw_filts = [fw_filtmatch, fw_filtmiss]
+        fw_filterr = open(filterr_path, 'w')
+        fw_filtwar = open(filtwar_path, 'w')
+        fw_filts = {'filtmatch': fw_filtmatch, 'filtmiss': fw_filtmiss,
+                    'filterr': fw_filterr, 'filtwar': fw_filtwar}
 
         # Filter and write
         is_current = True
@@ -231,6 +294,8 @@ grep '^>' {inp_file} | sed -e 's/^>//'
         fr_blat.close()
         fw_filtmatch.close()
         fw_filtmiss.close()
+        fw_filterr.close()
+        fw_filtwar.close()
 
         # Concat filtmatch and filtmiss
         filtmatch_exists = os.path.exists(filtmatch_path)

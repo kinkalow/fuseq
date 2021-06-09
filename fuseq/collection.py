@@ -6,6 +6,7 @@ from fuseq.base import Base
 
 
 class Collection(Base):
+
     def __init__(self, params):
         super().__init__()
         self.params = params
@@ -33,10 +34,10 @@ class Collection(Base):
             with open(self.params.inputs['mf_path'], 'r') as fr:
                 with open(self.mf_path, 'w') as fw:
                     for i, row in enumerate(fr, start=1):
-                        if i == self.mf_lines[idx]:
+                        if i == self.params.mf_lines[idx]:
                             fw.write(row)
                             idx += 1
-                            if idx > len(self.mf_lines) - 1:
+                            if idx > len(self.params.mf_lines) - 1:
                                 break
 
     def __get_breakinfo(self):
@@ -46,8 +47,10 @@ class Collection(Base):
             # Skip header line
             f_mf.readline()
             # Main lines
+            linenr = 1
             for row_mf in f_mf:
                 # Extract chrs and bps from merge_fusionfusion file
+                linenr += 1
                 row_mf = row_mf.rstrip('\n').split('\t')
                 if row_mf[1] not in chrs or row_mf[4] not in chrs:
                     continue
@@ -55,7 +58,7 @@ class Collection(Base):
                 [gene1, junc1, gene2, junc2] = row_mf[8:12]
                 bp1 = str(int(bp1) + 1) if strand1 == '+' else str(int(bp1) - 1)
                 bp2 = str(int(bp2) + 1) if strand2 == '+' else str(int(bp2) - 1)
-                breakinfo.append([sample, chr1, bp1, strand1, gene1, junc1, chr2, bp2, strand2, gene2, junc2])
+                breakinfo.append([linenr, sample, chr1, bp1, strand1, gene1, junc1, chr2, bp2, strand2, gene2, junc2])
         return breakinfo
 
     def __collect(self, breakinfo):
@@ -80,7 +83,8 @@ class Collection(Base):
             receiver, sender = multiprocessing.Pipe(False)
             p = multiprocessing.Process(
                 target=self.__task,
-                args=(i, sender, breakinfo, coll_procs, heads, readname_filt_cmd, seq_filt_cmd))
+                args=(i, sender, breakinfo, coll_procs, heads,
+                      readname_filt_cmd, seq_filt_cmd))
             jobs.append(p)
             pipes.append(receiver)
             p.start()
@@ -152,9 +156,8 @@ echo -n "$cnt"
             os.remove(out_path)
 
         jun_dic = {}
-        for step, [sample, chr1, bp1, strand1, gene1, junc1,
+        for step, [linenr, sample, chr1, bp1, strand1, gene1, junc1,
                    chr2, bp2, strand2, gene2, junc2] in enumerate(breakinfo[head:tail]):
-            linenr = 1 + (head + 1) + step  # first 1: header line, second 1: starting with 1
             if sample not in jun_dic:
                 jun_dic[sample] = glob.glob(f'{self.star_dir}/{sample}/*.junction')[0]
             jun_path = jun_dic[sample]

@@ -88,7 +88,8 @@ These settings can be adjusted using the following options.
 
 ```bash
 # Change the options passed to blat command
-# Argument value must not begin with a hyphen
+# The leading hyphen required for blat options can be omitted
+# The first letter of an argument value must not start with a hyphen
 # This option affects step2
 $ fuseq <genomon_root_dir> <fuseq_root_dir> --blat-opt 'minScore=20'            # OK
 $ fuseq <genomon_root_dir> <fuseq_root_dir> --blat-opt '-minScore=20'           # NG

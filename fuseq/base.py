@@ -6,6 +6,7 @@ class Base:
     def __init__(self):
         self.files = {'params': 'params', 'coll': 'collect', 'blat': 'blat',
                       'filtmatch': 'filter_match', 'filtmiss': 'filter_miss',
+                      'filtwar': 'filter_warning', 'filterr': 'filter_error',
                       'coll_res': 'collect_restart', 'blat_res': 'blat_restart'}
 
     def _run_cmd(self, cmd, name=None, ignore_err=False):
@@ -23,11 +24,14 @@ class Base:
         return out
 
     # Array job
-    def _run_cmd_on_shirokane(self, script_path, num_parallels, name=None):
+    def _run_jobs(self, code, path, num_parallels, name=None):
         '''Execute array job and wait for completion
            Check the return code'''
 
-        cmd = f'qsub -terse -sync y -t 1-{num_parallels}:1 {script_path}'
+        with open(path, 'w') as f:
+            f.write(code)
+
+        cmd = f'qsub -terse -sync y -t 1-{num_parallels}:1 {path}'
         out, err, ret = self._run_cmd(cmd, 'qsub', ignore_err=True)
         # out contains jobid and return codes
 

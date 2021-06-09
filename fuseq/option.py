@@ -87,6 +87,7 @@ class Option:
         parser.add_argument('--shirokane', default=False, action='store_true', help='Compute on Shirokane')
         parser.add_argument('--blat-jobs', default=100, type=int, help='Number of array jobs when computing blat on Shirokane')
         #
+        parser.add_argument('--print-pos-err', default=False, action='store_true', help='Display a message if a problem occurs when filtering balt results')
         parser.add_argument('--time', default=False, action='store_true', help='Display elapsed time')
         parser.add_argument('--version', action='version', version=f'{prog}: {__version__}')
         self.args = parser.parse_args()
@@ -163,7 +164,7 @@ class Option:
 
     def __modify_blat_opt(self, blat_opt):
         if not blat_opt:
-            return
+            return ''
         blat_opts = [opt if opt[0] == '-' else f'-{opt}'
                      for opt in re.split(' +', blat_opt.strip(' '))]
         return ' '.join(blat_opts)

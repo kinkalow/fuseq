@@ -37,16 +37,10 @@ class Pipeline(Base):
             breakinfo = json.load(f)
         return breakinfo
 
-    def __delete_dir(self, directory, make_work_dir):
+    def __delete_dir(self, directory, make_empty_dir):
         shutil.rmtree(directory, ignore_errors=True)
-        if make_work_dir:
+        if make_empty_dir:
             os.makedirs(directory)
-
-    def __delete_work_dir(self, make_work_dir=False):
-        self.__delete_dir(self.params.work_dir, make_work_dir)
-
-    def __delete_shirokane_dir(self, make_work_dir=False):
-        self.__delete_dir(self.params.skwork_dir, make_work_dir)
 
     #
     # Restart
@@ -144,7 +138,7 @@ class Pipeline(Base):
 
     def run(self):
         # Preprocess
-        self.__delete_work_dir(make_work_dir=True)
+        self.__delete_dir(self.params.work_dir, make_empty_dir=True)
         self.__save_params()
         # Main
         breakinfo = Collection(self.params).run()
@@ -153,7 +147,7 @@ class Pipeline(Base):
         BlatFilter(self.params, breakinfo).run()
         # Postprocess
         if self.params.delete_work:
-            self.__delete_work_dir()
+            self.__delete_dir(self.params.work_dir)
 
     def restart(self):
         # Preprocess
@@ -166,20 +160,20 @@ class Pipeline(Base):
         BlatFilter(self.params, breakinfo).run()
         # Postprocess
         if self.params.delete_work:
-            self.__delete_work_dir()
+            self.__delete_dir(self.params.work_dir)
 
     def run_on_shirokane(self):
         # Preprocess
-        self.__delete_work_dir(make_work_dir=True)
-        self.__delete_shirokane_dir(make_work_dir=True)
+        self.__delete_dir(self.params.work_dir, make_empty_dir=True)
+        self.__delete_dir(self.params.skwork_dir, make_empty_dir=True)
         self.__save_params()
         #breakinfo = self.__load_breakinfo()
         #breakinfo = self.__filter_on_restart(breakinfo)
         # Main
         breakinfo = Collection(self.params).run()
         self.__save_breakinfo(breakinfo)
-        PBlat(self.params).run_batch()
+        PBlat(self.params).run()
         BlatFilter(self.params, breakinfo).run()
         # Postprocess
         if self.params.delete_work:
-            self.__delete_work_dir()
+            self.__delete_dir(self.params.work_dir)

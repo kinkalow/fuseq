@@ -68,7 +68,7 @@ tail -{n_lines0} ../{inp_file} | split -a {length} -d -l {lines0} --numeric-suff
 
     def __blat(self):
         blat_path = self._run_cmd('which blat', 'which_blat')
-        script = '''\
+        code = '''\
 #!/usr/local/bin/nosh
 #$ -S /usr/local/bin/nosh
 #$ -cwd
@@ -83,10 +83,8 @@ cd {skwork_dir}
            length=self.num_numeric_suffixes,
            blat_path=blat_path, blat_opt=self.params.blat_opt,
            reference=self.params.reference, inp_file=self.files['coll'])
-        out_file = f'{self.params.skwork_dir}/{self.files["blat"]}.sh'
-        with open(out_file, 'w') as f:
-            f.write(script)
-        self._run_cmd_on_shirokane(out_file, self.num_parallels, 'blat_shirokane')
+        path = f'{self.params.skwork_dir}/{self.files["blat"]}.sh'
+        self._run_jobs(code, path, self.num_parallels, 'blat_jobs')
 
     def __concat(self):
         cmd = '''\
@@ -101,7 +99,7 @@ cat {inp_files} > ../{out_file}
         self._run_cmd(cmd, 'cat_blat')
 
     @Timer('blat')
-    def run_batch(self):
+    def run(self):
         self.__split()
         self.__blat()
         self.__concat()
