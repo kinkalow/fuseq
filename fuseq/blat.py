@@ -12,8 +12,8 @@ class Blat(Base):
 #!/bin/bash
 set -eu
 cd {work_dir}
-blat {blat_opt} -noHead {reference} {inp_file} {out_file}
-'''.format(work_dir=self.params.work_dir, blat_opt=self.params.blat_opt,
+blat {blat_opts} -noHead {reference} {inp_file} {out_file}
+'''.format(work_dir=self.params.work_dir, blat_opts=self.params.blat_opts,
            reference=self.params.reference, inp_file=self.files['coll'],
            out_file=self.files['blat'])
         self._run_cmd(cmd, 'blat')
@@ -78,10 +78,10 @@ tail -{n_lines0} ../{inp_file} | split -a {length} -d -l {lines0} --numeric-suff
 set -eu
 id=$(printf "%0{length}d" ${{SGE_TASK_ID}})
 cd {skwork_dir}
-{blat_path} {blat_opt} -noHead {reference} {inp_file}${{id}} {out_file}${{id}}
+{blat_path} {blat_opts} -noHead {reference} {inp_file}${{id}} {out_file}${{id}}
 '''.format(skwork_dir=self.params.skwork_dir, out_file=self.files['blat'],
            length=self.num_numeric_suffixes,
-           blat_path=blat_path, blat_opt=self.params.blat_opt,
+           blat_path=blat_path, blat_opts=self.params.blat_opts,
            reference=self.params.reference, inp_file=self.files['coll'])
         path = f'{self.params.skwork_dir}/{self.files["blat"]}.sh'
         self._run_jobs(code, path, self.num_parallels, 'blat_jobs')

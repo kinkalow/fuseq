@@ -66,13 +66,13 @@ class Option:
         prog = 'fuseq'
 
         parser = argparse.ArgumentParser(prog=prog)
-        parser.add_argument('genomon_root_dir', metavar='genomon_root_directory', type=str, help='Input directory')
-        parser.add_argument('fuseq_root_dir', metavar='fuseq_root_directory', type=str, help='Output directory')
-        parser.add_argument('-b', '--blat-opt', default='', type=str, help='Blat options')
-        parser.add_argument('-d', '--star-dir', default='', type=str, help='Alternative star directory in genomon output')
+        parser.add_argument('genomon_root_directory', type=str, help='Input directory')
+        parser.add_argument('fuseq_root_directory', type=str, help='Output directory')
+        parser.add_argument('-b', '--blat-options', default='', type=str, help='Blat options')
+        parser.add_argument('-c', '--collection-process', default=4, type=int, help='Number of parallel processes for collecting data for Blat input')
+        parser.add_argument('-d', '--star-directory', default='', type=str, help='Alternative star directory in genomon output')
         parser.add_argument('-l', '--lines', default='', type=str, help='Line number in a fusion gene detection file')
         parser.add_argument('-f', '--fusion-file', default='', type=str, help='Alternative merge_fusionfusion_filt.txt file in genomon output')
-        parser.add_argument('-p', '--coll-procs', default=4, type=int, help='Number of parallel processes for collecting data for Blat input')
         parser.add_argument('-w', '--no-delete-work', default=False, action='store_true', help='Do not delete work directory')
         parser.add_argument('-B', '--restart-blat', default=False, action='store_true', help='Restart from Blat')
         parser.add_argument('-F', '--restart-filter', default=False, action='store_true', help='Restart from Blat filter')
@@ -87,7 +87,8 @@ class Option:
         parser.add_argument('--shirokane', default=False, action='store_true', help='Compute on Shirokane')
         parser.add_argument('--blat-jobs', default=100, type=int, help='Number of array jobs when computing blat on Shirokane')
         #
-        parser.add_argument('--print-pos-err', default=False, action='store_true', help='Display a message if a problem occurs when filtering balt results')
+        parser.add_argument('--no-check-position-interval', default=False, action='store_true', help='Check if Qpos interval matches Tpos interval when filtering blat results')
+        parser.add_argument('--print-filtering-error', default=False, action='store_true', help='Display problematic data for blat filtering results')
         parser.add_argument('--time', default=False, action='store_true', help='Display elapsed time')
         parser.add_argument('--version', action='version', version=f'{prog}: {__version__}')
         self.args = parser.parse_args()
@@ -96,7 +97,7 @@ class Option:
 
     def __check(self):
         args = self.args
-        Checker.isdir(args.genomon_root_dir)
+        Checker.isdir(args.genomon_root_directory)
         Checker.isfile(args.reference)
         if args.shirokane:
             Checker.isshirokane()
@@ -126,35 +127,32 @@ class Option:
         args = self.args
 
         # Change argument values
-        args.fuseq_root_dir = os.path.abspath(args.fuseq_root_dir)
         args.fusion_file = os.path.abspath(args.fusion_file) if args.fusion_file else ''
-        args.genomon_root_dir = os.path.abspath(args.genomon_root_dir)
         args.reference = os.path.abspath(args.reference)
-        args.star_dir = os.path.abspath(args.star_dir) if args.star_dir else ''
-        args.blat_opt = self.__modify_blat_opt(args.blat_opt)
 
         # Change argument names
         # Some of them change the values
+        args.blat_opts = self.__modify_blat_opts(args.blat_options)
         args.bp_end_extn = args.end
         args.bp_start_extn = args.start
+        args.check_pos_intvl = False if args.no_check_position_interval else True
         args.delete_work = not args.no_delete_work
+        args.fuseq_root_dir = os.path.abspath(args.fuseq_root_directory)
+        args.genomon_root_dir = os.path.abspath(args.genomon_root_directory)
         args.mf_lines = self.__get_lines(args.lines)
         args.num_blat_parallels = args.blat_jobs
+        args.print_filt_err = args.print_filtering_error
         args.print_time = args.time
         args.readname_filt = args.readname
         args.seq_filt = args.sequence
+        args.star_dir = os.path.abspath(args.star_directory) if args.star_directory else ''
         args.is_shirokane = args.shirokane
         args.use_filt = False if args.no_use_filt else True
-        del args.end
-        del args.start
-        del args.no_delete_work
-        del args.lines
-        del args.blat_jobs
-        del args.time
-        del args.readname
-        del args.sequence
-        del args.shirokane
-        del args.no_use_filt
+
+        del args.blat_options, args.end, args.start, args.no_check_position_interval, args.no_delete_work, \
+        args.fuseq_root_directory, args.genomon_root_directory, args.lines, args.blat_jobs, \
+        args.print_filtering_error, args.time, args.readname, args.sequence, args.star_directory, \
+        args.shirokane, args.no_use_filt
 
         # Create new argument
         args.is_restart = True if args.restart_blat or args.restart_filter else False
@@ -162,11 +160,11 @@ class Option:
         args.work_dirname = 'work_restart'
         args.skwork_dirname = 'shirokane'
 
-    def __modify_blat_opt(self, blat_opt):
-        if not blat_opt:
+    def __modify_blat_opts(self, blat_opts):
+        if not blat_opts:
             return ''
         blat_opts = [opt if opt[0] == '-' else f'-{opt}'
-                     for opt in re.split(' +', blat_opt.strip(' '))]
+                     for opt in re.split(' +', blat_opts.strip(' '))]
         return ' '.join(blat_opts)
 
     def refer(self):

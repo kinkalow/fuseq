@@ -65,7 +65,7 @@ class Collection(Base):
         """Collect data for Blat input"""
         with open(self.mf_path, 'r') as f:
             line_cnt = sum([1 for _ in f])
-        coll_procs = min(line_cnt, self.params.coll_procs)
+        coll_procs = min(line_cnt, self.params.collection_process)
         data_num = line_cnt // coll_procs if line_cnt % coll_procs == 0 else line_cnt // coll_procs + 1
         heads = [i * data_num for i in range(coll_procs)] + [line_cnt]
 

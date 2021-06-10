@@ -134,7 +134,7 @@ class BlatFilter(Base):
         w = '\n'.join([w.rstrip(' ') for w in w_sent])
 
         # Print
-        if self.params.print_pos_err and (is_err or is_war):
+        if self.params.print_filt_err and (is_err or is_war):
             if is_err:
                 print(f'[Warning] Only type{list(one_or_two_set)[0]} exists')
             else:
@@ -243,8 +243,8 @@ grep '^>' {inp_file} | sed -e 's/^>//'
 
         # Filter and write
         is_current = True
-        bp_start_extn = self.params.bp_start_extn
-        bp_end_extn = self.params.bp_end_extn
+        start_extn = self.params.bp_start_extn
+        end_extn = self.params.bp_end_extn
         for row in fr_collect:
             # Target read
             cur_readname = row.rstrip('\n')[1:]
@@ -266,19 +266,23 @@ grep '^>' {inp_file} | sed -e 's/^>//'
                     chr = s[13]             # tname
                     bp_start = int(s[15])   # tstart
                     bp_end = int(s[16])     # tend
-                    pos_start_adj = pos_start + 1
-                    bp_start_adj = bp_start - bp_start_extn
-                    bp_end_adj = bp_end + bp_end_extn  # NOTE: +1 increases the number of matches to Genomon results
+                    pos_start_plus1 = pos_start + 1  # NOTE: pos_start+1(base1) matches blat result on web
+                    bp_start_plus1 = bp_start + 1    # NOTE: bp_start+1(base1) matches blat result on web
+                    bp_start_extn = bp_start - start_extn
+                    bp_end_extn = bp_end + end_extn  # NOTE: end_extn=1 matches Genomon result
                 if readname == cur_readname:
+                    pos_intvl = True
+                    if self.params.check_pos_intvl:
+                        pos_intvl = pos_end - pos_start == bp_end - bp_start
                     # Filter based on chr and tstart-tend range
-                    if chr == cur_chr1 and bp_start_adj <= cur_bp1 <= bp_end_adj:
-                        poses.append((pos_start_adj, pos_end, 1, bp_start + 1, bp_end, chr, strand))
-                    elif chr == cur_chr2 and bp_start_adj <= cur_bp2 <= bp_end_adj:
-                        poses.append((pos_start_adj, pos_end, 2, bp_start + 1, bp_end, chr, strand))
+                    if pos_intvl and chr == cur_chr1 and bp_start_extn <= cur_bp1 <= bp_end_extn:
+                        poses.append((pos_start_plus1, pos_end, 1, bp_start_plus1, bp_end, chr, strand))
+                    elif pos_intvl and chr == cur_chr2 and bp_start_extn <= cur_bp2 <= bp_end_extn:
+                        poses.append((pos_start_plus1, pos_end, 2, bp_start_plus1, bp_end, chr, strand))
                     if chr == cur_chr1:
-                        other_info.append((bp_start_adj, bp_end_adj, 1))
+                        other_info.append((bp_start_extn, bp_end_extn, 1, cur_bp1))
                     elif chr == cur_chr2:
-                        other_info.append((bp_start_adj, bp_end_adj, 2))
+                        other_info.append((bp_start_extn, bp_end_extn, 2, cur_bp2))
                     is_current = True
                 else:
                     # Write one read
