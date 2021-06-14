@@ -4,7 +4,8 @@ import time
 
 class Base:
     def __init__(self):
-        self.files = {'params': 'params', 'coll': 'collect', 'blat': 'blat',
+        self.files = {'params': 'parameters', 'breakinfo': 'break_information',
+                      'coll': 'collect', 'blat': 'blat',
                       'filtmatch': 'filter_match', 'filtmiss': 'filter_miss',
                       'filtwar': 'filter_warning', 'filterr': 'filter_error',
                       'coll_res': 'collect_restart', 'blat_res': 'blat_restart'}

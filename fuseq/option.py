@@ -81,7 +81,7 @@ class Option:
         parser.add_argument('--readname', default='', type=str, help='Filtering with readname')
         parser.add_argument('--sequence', default='', type=str, help='Filtering with sequence')
         parser.add_argument('--start', default=0, type=int, help='Extend the start position of breakpoints at Blat filtering')
-        parser.add_argument('--end', default=1, type=int, help='Extend the end position of breakpoints at Blat filtering')
+        parser.add_argument('--end', default=0, type=int, help='Extend the end position of breakpoints at Blat filtering')
         parser.add_argument('--reference', default='/share/pub/genomon/.genomon_local/genomon_pipeline-2.6.3/database/GRCh37/GRCh37.fa', type=str, help='Reference path')
         # Options on Shirokane
         parser.add_argument('--shirokane', default=False, action='store_true', help='Compute on Shirokane')
@@ -146,7 +146,7 @@ class Option:
         args.readname_filt = args.readname
         args.seq_filt = args.sequence
         args.star_dir = os.path.abspath(args.star_directory) if args.star_directory else ''
-        args.is_shirokane = args.shirokane
+        args.on_shirokane = args.shirokane
         args.use_filt = False if args.no_use_filt else True
 
         del args.blat_options, args.end, args.start, args.no_check_position_interval, args.no_delete_work, \

@@ -268,17 +268,16 @@ grep '^>' {inp_file} | sed -e 's/^>//'
                     bp_end = int(s[16])     # tend
                     pos_start_plus1 = pos_start + 1  # NOTE: pos_start+1(base1) matches blat result on web
                     bp_start_plus1 = bp_start + 1    # NOTE: bp_start+1(base1) matches blat result on web
-                    bp_start_extn = bp_start - start_extn
+                    bp_start_extn = bp_start_plus1 - start_extn
                     bp_end_extn = bp_end + end_extn  # NOTE: end_extn=1 matches Genomon result
                 if readname == cur_readname:
-                    pos_intvl = True
-                    if self.params.check_pos_intvl:
-                        pos_intvl = pos_end - pos_start == bp_end - bp_start
-                    # Filter based on chr and tstart-tend range
-                    if pos_intvl and chr == cur_chr1 and bp_start_extn <= cur_bp1 <= bp_end_extn:
-                        poses.append((pos_start_plus1, pos_end, 1, bp_start_plus1, bp_end, chr, strand))
-                    elif pos_intvl and chr == cur_chr2 and bp_start_extn <= cur_bp2 <= bp_end_extn:
-                        poses.append((pos_start_plus1, pos_end, 2, bp_start_plus1, bp_end, chr, strand))
+                    pos_intvl_ok = pos_end - pos_start == bp_end - bp_start if self.params.check_pos_intvl else True
+                    if pos_intvl_ok:
+                        # Filter based on chr and tstart-tend range
+                        if chr == cur_chr1 and bp_start_extn <= cur_bp1 <= bp_end_extn:
+                            poses.append((pos_start_plus1, pos_end, 1, bp_start_plus1, bp_end, chr, strand))
+                        elif chr == cur_chr2 and bp_start_extn <= cur_bp2 <= bp_end_extn:
+                            poses.append((pos_start_plus1, pos_end, 2, bp_start_plus1, bp_end, chr, strand))
                     if chr == cur_chr1:
                         other_info.append((bp_start_extn, bp_end_extn, 1, cur_bp1))
                     elif chr == cur_chr2:

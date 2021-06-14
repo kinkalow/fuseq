@@ -29,13 +29,7 @@ def main():
 
         # Run Blat
         pipeline = Pipeline(params)
-        if params.is_restart:
-            Checker.isdir(work_dir)
-            pipeline.restart()
-        elif params.is_shirokane:
-            pipeline.run_on_shirokane()
-        else:
-            pipeline.run()
+        pipeline.run()
 
 
 if __name__ == '__main__':

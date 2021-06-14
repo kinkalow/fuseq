@@ -56,8 +56,6 @@ class Collection(Base):
                     continue
                 [sample, chr1, bp1, strand1, chr2, bp2, strand2] = row_mf[0:7]
                 [gene1, junc1, gene2, junc2] = row_mf[8:12]
-                bp1 = str(int(bp1) + 1) if strand1 == '+' else str(int(bp1) - 1)
-                bp2 = str(int(bp2) + 1) if strand2 == '+' else str(int(bp2) - 1)
                 breakinfo.append([linenr, sample, chr1, bp1, strand1, gene1, junc1, chr2, bp2, strand2, gene2, junc2])
         return breakinfo
 
@@ -161,7 +159,9 @@ echo -n "$cnt"
             if sample not in jun_dic:
                 jun_dic[sample] = glob.glob(f'{self.star_dir}/{sample}/*.junction')[0]
             jun_path = jun_dic[sample]
-            cmd = cmd_template.format(linenr=linenr, chr1=chr1, bp1=bp1, chr2=chr2, bp2=bp2,
+            bp1_arng = str(int(bp1) + 1) if strand1 == '+' else str(int(bp1) - 1)
+            bp2_arng = str(int(bp2) + 1) if strand2 == '+' else str(int(bp2) - 1)
+            cmd = cmd_template.format(linenr=linenr, chr1=chr1, bp1=bp1_arng, chr2=chr2, bp2=bp2_arng,
                                       jun_path=jun_path, out_path=out_path,
                                       readname_filt_cmd=readname_filt_cmd, seq_filt_cmd=seq_filt_cmd)
             out, err, ret = self._run_cmd(cmd, ignore_err=True)
