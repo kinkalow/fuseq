@@ -56,71 +56,24 @@ class Collection(Base):
                     continue
                 [sample, chr1, bp1, strand1, chr2, bp2, strand2] = row_mf[0:7]
                 [gene1, junc1, gene2, junc2] = row_mf[8:12]
-                breakinfo.append([linenr, sample, chr1, bp1, strand1, gene1, junc1, chr2, bp2, strand2, gene2, junc2])
+                breakinfo.append({
+                    'linenr': linenr, 'sample': sample,
+                    'chr1': chr1, 'bp1': bp1, 'strand1': strand1, 'gene1': gene1, 'junc1': junc1,
+                    'chr2': chr2, 'bp2': bp2, 'strand2': strand2, 'gene2': gene2, 'junc2': junc2})
         return breakinfo
 
-    def __collect(self, breakinfo):
-        """Collect data for Blat input"""
-        with open(self.mf_path, 'r') as f:
-            line_cnt = sum([1 for _ in f])
-        coll_procs = min(line_cnt, self.params.collection_process)
-        data_num = line_cnt // coll_procs if line_cnt % coll_procs == 0 else line_cnt // coll_procs + 1
-        heads = [i * data_num for i in range(coll_procs)] + [line_cnt]
+    def __create_script(self, breakinfo):
+        # Commands for filtering
+        readname_filt_cmd = \
+            f'[ "$readname" != \'{self.params.readname_filt}\' ] && continue' \
+            if self.params.readname_filt else ''
+        seq_filt_cmd = \
+            f'[ "$seq" != \'{self.params.seq_filt}\' ] && continue' \
+            if self.params.seq_filt else ''
 
-        # Filter commands
-        readname_filt_cmd = ''
-        if self.params.readname_filt:
-            readname_filt_cmd = f'[ "$readname" != \'{self.params.readname_filt}\' ] && continue'
-        seq_filt_cmd = ''
-        if self.params.seq_filt:
-            seq_filt_cmd = f'[ "$seq" != \'{self.params.seq_filt}\' ] && continue'
-
-        jobs = []
-        pipes = []
-        for i in range(coll_procs):
-            receiver, sender = multiprocessing.Pipe(False)
-            p = multiprocessing.Process(
-                target=self.__task,
-                args=(i, sender, breakinfo, coll_procs, heads,
-                      readname_filt_cmd, seq_filt_cmd))
-            jobs.append(p)
-            pipes.append(receiver)
-            p.start()
-
-        # results
-        out_paths = []
-        breakinfo = []
-        has_err = False
-        for pipe in pipes:
-            out_path, results = pipe.recv()  # Wait for the results to be sent
-            for r in results:
-                if r['ret'] != 0 or len(r['err']) != 0 or not r['cnt'].isdecimal():
-                    print(f'[Error] {str(r)}')
-                    has_err = True
-                r.pop('ret')
-                r.pop('err')
-                breakinfo.append(r)
-            if os.path.exists(out_path):
-                out_paths.append(out_path)
-
-        for job in jobs:
-            job.join()
-
-        if has_err:
-            exit(1)
-
-        if not out_paths:
-            print('[Error] No input data for blat')
-            exit(1)
-
-        return out_paths, breakinfo
-
-    def __task(self, i_proc, sender, breakinfo, coll_procs, heads, readname_filt_cmd, seq_filt_cmd):
-        cmd_template = '''\
-#!/bin/bash
-
-set -eu
-
+        # Commands
+        cmd_head = '#!/bin/bash\n\nset -eu\n\n'
+        cmd_main = '''\
 chr1='{chr1}'
 chr2='{chr2}'
 bp1='{bp1}'
@@ -143,48 +96,122 @@ for readname in $(cat "$jun_path" | awk '{{ \\
       printf ">{linenr}-${{cnt}}_$readname\\n$seq\\n" >> "$out_path"
     done
 done
-echo -n "$cnt"
+
+echo "$cnt" >> {out_path}.cnt\n\n
 '''
-        results = []
-        head = heads[i_proc]
-        tail = heads[i_proc + 1]
-        digit = len(str(coll_procs).split('.')[0])
-        out_path = f'{self.params.work_dir}/{self.out_file}{str(i_proc).zfill(digit)}'
-        if os.path.exists(out_path):
-            os.remove(out_path)
+
+        line_cnt = len(breakinfo)
+        n_parallels = min(line_cnt, self.params.num_coll_parallels)
+        data_num = \
+            line_cnt // n_parallels if line_cnt % n_parallels == 0 \
+            else line_cnt // n_parallels + 1
+        heads = [i * data_num for i in range(n_parallels)] + [line_cnt]
+        width = len(str(n_parallels))
 
         jun_dic = {}
-        for step, [linenr, sample, chr1, bp1, strand1, gene1, junc1,
-                   chr2, bp2, strand2, gene2, junc2] in enumerate(breakinfo[head:tail]):
-            if sample not in jun_dic:
-                jun_dic[sample] = glob.glob(f'{self.star_dir}/{sample}/*.junction')[0]
-            jun_path = jun_dic[sample]
-            bp1_arng = str(int(bp1) + 1) if strand1 == '+' else str(int(bp1) - 1)
-            bp2_arng = str(int(bp2) + 1) if strand2 == '+' else str(int(bp2) - 1)
-            cmd = cmd_template.format(linenr=linenr, chr1=chr1, bp1=bp1_arng, chr2=chr2, bp2=bp2_arng,
-                                      jun_path=jun_path, out_path=out_path,
-                                      readname_filt_cmd=readname_filt_cmd, seq_filt_cmd=seq_filt_cmd)
-            out, err, ret = self._run_cmd(cmd, ignore_err=True)
-            results.append({'linenr': linenr, 'ret': ret, 'err': err, 'cnt': out, 'sample': sample,
-                            'chr1': chr1, 'bp1': bp1, 'strand1': strand1, 'gene1': gene1, 'junc1': junc1,
-                            'chr2': chr2, 'bp2': bp2, 'strand2': strand2, 'gene2': gene2, 'junc2': junc2})
-        sender.send((out_path, results))
-        sender.close()
+        out_paths = []
+        for i, (head, tail) in enumerate(zip(heads, heads[1:])):
+            out_path = f'{self.params.swork_dir}/{self.out_file}{str(i+1).zfill(width)}'
+            script_path = f'{out_path}.sh'
+            out_paths.append(out_path)
+            with open(script_path, 'w') as f:
+                f.write(cmd_head.format(out_path=out_path))
+                for d in breakinfo[head:tail]:
+                    [linenr, sample, chr1, bp1, strand1, gene1, junc1,
+                     chr2, bp2, strand2, gene2, junc2] = d.values()
+                    if sample not in jun_dic:
+                        jun_dic[sample] = glob.glob(f'{self.star_dir}/{sample}/*.junction')[0]
+                    jun_path = jun_dic[sample]
+                    bp1_arng = str(int(bp1) + 1) if strand1 == '+' else str(int(bp1) - 1)
+                    bp2_arng = str(int(bp2) + 1) if strand2 == '+' else str(int(bp2) - 1)
+                    cmd = cmd_main.format(linenr=linenr, chr1=chr1, bp1=bp1_arng, chr2=chr2, bp2=bp2_arng,
+                                          jun_path=jun_path, out_path=out_path,
+                                          readname_filt_cmd=readname_filt_cmd, seq_filt_cmd=seq_filt_cmd)
+                    f.write(cmd)
+            os.chmod(script_path, 0o0755)
+
+        return out_paths
+
+    def __task(self, i_proc, out_path, errs, rcs):
+        cmd = f'bash {out_path}.sh'
+        _, err, rc = self._run_cmd(cmd, 'collection', ignore_err=True)
+        errs[i_proc] = err
+        rcs[i_proc] = rc
+
+    def __collect(self, breakinfo):
+        """Collect data for Blat input"""
+        # Create scripts
+        out_paths = self.__create_script(breakinfo)
+        n_parallels = len(out_paths)
+
+        # Run scripts
+        if self.params.on_shirokane:
+            width = len(str(n_parallels))
+            coll_path = out_paths[0][:-width]
+            cmd = '''\
+#!/usr/local/bin/nosh
+#$ -S /usr/local/bin/nosh
+#$ -cwd
+#$ -l s_vmem=4G,mem_req=4G
+#$ -e {coll_path}.log
+#$ -o {coll_path}.log
+id=$(printf "%0{width}d" ${{SGE_TASK_ID}})
+bash {coll_path}${{id}}.sh
+'''.format(coll_path=coll_path, width=width)
+            script_path = f'{coll_path}.sh'
+            self._run_cmd_on_uge(cmd, script_path, n_parallels, 'collection_uge')
+
+        else:
+            manager = multiprocessing.Manager()
+            errs = manager.dict()
+            rcs = manager.dict()
+            jobs = []
+            for i in range(n_parallels):
+                p = multiprocessing.Process(
+                    target=self.__task,
+                    args=(i, out_paths[i], errs, rcs))
+                jobs.append(p)
+                p.start()
+            for job in jobs:
+                job.join()
+
+            # Check return codes
+            has_err = False
+            for i in range(n_parallels):
+                if rcs[i] != 0:
+                    print('[Error] Return code is not 0 at collection script')
+                    print(f'err: {errs[i]}, rc: {rcs[i]}')
+                    has_err = True
+            if has_err:
+                exit(1)
+
+        # Add counts to breakinfo
+        cnts = []
+        for i in range(n_parallels):
+            cnt_path = f'{out_paths[i]}.cnt'
+            with open(cnt_path, 'r') as f:
+                for row in f:
+                    cnts.append(row.rstrip('\n'))
+        assert(len(cnts) == len(breakinfo))
+        for i, cnt in enumerate(cnts):
+            breakinfo[i]['cnt'] = cnt
+
+        return out_paths
 
     def __concat(self, inp_paths):
         inp_files = ' '.join([os.path.basename(path) for path in inp_paths])
         cmd = '''\
 #!/bin/bash
 set -eu
-cd {work_dir}
-cat {inp_files} > {out_file}
-'''.format(work_dir=self.params.work_dir, inp_files=inp_files, out_file=self.out_file)
+cd {swork_dir}
+cat {inp_files} > ../{out_file}
+'''.format(swork_dir=self.params.swork_dir, inp_files=inp_files, out_file=self.out_file)
         self._run_cmd(cmd, 'cat_coll_files')
 
     @Timer('collection')
     def run(self):
         self.__create_symlinks()
         breakinfo = self.__get_breakinfo()
-        coll_out_paths, breakinfo = self.__collect(breakinfo)
+        coll_out_paths = self.__collect(breakinfo)
         self.__concat(coll_out_paths)
         return breakinfo

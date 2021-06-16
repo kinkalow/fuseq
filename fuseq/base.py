@@ -1,3 +1,4 @@
+import os
 import re
 import subprocess
 import time
@@ -25,12 +26,13 @@ class Base:
         return out
 
     # Array job
-    def _run_jobs(self, code, path, num_parallels, name=None):
+    def _run_cmd_on_uge(self, cmd, path, num_parallels, name=None):
         '''Execute array job and wait for completion
            Check the return code'''
 
         with open(path, 'w') as f:
-            f.write(code)
+            f.write(cmd)
+        os.chmod(path, 0o0755)
 
         cmd = f'qsub -terse -sync y -t 1-{num_parallels}:1 {path}'
         out, err, ret = self._run_cmd(cmd, 'qsub', ignore_err=True)

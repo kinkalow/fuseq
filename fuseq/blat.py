@@ -57,42 +57,42 @@ echo -n $n_lines
         cmd = '''\
 #!/bin/bash
 set -eu
-cd {skwork_dir}
-head -{n_lines1} ../{inp_file} | split -a {length} -d -l {lines1} --numeric-suffixes=1 - {prefix}
-tail -{n_lines0} ../{inp_file} | split -a {length} -d -l {lines0} --numeric-suffixes={numr_sfx} - {prefix}
-'''.format(skwork_dir=self.params.skwork_dir, n_lines1=n_lines1,
-           inp_file=self.files['coll'], length=self.num_numeric_suffixes,
+cd {swork_dir}
+head -{n_lines1} ../{inp_file} | split -a {width} -d -l {lines1} --numeric-suffixes=1 - {prefix}
+tail -{n_lines0} ../{inp_file} | split -a {width} -d -l {lines0} --numeric-suffixes={numr_sfx} - {prefix}
+'''.format(swork_dir=self.params.swork_dir, n_lines1=n_lines1,
+           inp_file=self.files['coll'], width=self.num_numeric_suffixes,
            lines1=n_lines1_per_file, prefix=prefix, n_lines0=n_lines0,
            lines0=n_lines0_per_file, numr_sfx=n_files1 + 1)
         self._run_cmd(cmd, 'split_coll')
 
     def __blat(self):
         blat_path = self._run_cmd('which blat', 'which_blat')
-        code = '''\
+        cmd = '''\
 #!/usr/local/bin/nosh
 #$ -S /usr/local/bin/nosh
 #$ -cwd
 #$ -l s_vmem=8G,mem_req=8G
-#$ -e {skwork_dir}/{out_file}.log
-#$ -o {skwork_dir}/{out_file}.log
+#$ -e {swork_dir}/{out_file}.log
+#$ -o {swork_dir}/{out_file}.log
 set -eu
-id=$(printf "%0{length}d" ${{SGE_TASK_ID}})
-cd {skwork_dir}
+id=$(printf "%0{width}d" ${{SGE_TASK_ID}})
+cd {swork_dir}
 {blat_path} {blat_opts} -noHead {reference} {inp_file}${{id}} {out_file}${{id}}
-'''.format(skwork_dir=self.params.skwork_dir, out_file=self.files['blat'],
-           length=self.num_numeric_suffixes,
+'''.format(swork_dir=self.params.swork_dir, out_file=self.files['blat'],
+           width=self.num_numeric_suffixes,
            blat_path=blat_path, blat_opts=self.params.blat_opts,
            reference=self.params.reference, inp_file=self.files['coll'])
-        path = f'{self.params.skwork_dir}/{self.files["blat"]}.sh'
-        self._run_jobs(code, path, self.num_parallels, 'blat_jobs')
+        path = f'{self.params.swork_dir}/{self.files["blat"]}.sh'
+        self._run_cmd_on_uge(cmd, path, self.num_parallels, 'blat_uge')
 
     def __concat(self):
         cmd = '''\
 !/bin/bash
 set -eu
-cd {skwork_dir}
+cd {swork_dir}
 cat {inp_files} > ../{out_file}
-'''.format(skwork_dir=self.params.skwork_dir,
+'''.format(swork_dir=self.params.swork_dir,
            inp_files=' '.join([f'{self.files["blat"]}{str(i).zfill(self.num_numeric_suffixes)}'
                                for i in range(1, self.num_parallels + 1)]),
            out_file=self.files['blat'])

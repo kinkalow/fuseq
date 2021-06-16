@@ -49,7 +49,7 @@ class Pipeline(Base):
         shutil.rmtree(self.params.work_dir, ignore_errors=True)
         if make_empty_dir:
             os.makedirs(self.params.work_dir)
-            os.makedirs(self.params.skwork_dir)
+            os.makedirs(self.params.swork_dir)
 
     #
     # Restart
@@ -158,10 +158,7 @@ class Pipeline(Base):
             self.__delete_work_dir(make_empty_dir=True)
             self.__save_params()
             # Collection
-            if self.params.on_shirokane:
-                breakinfo = Collection(self.params).run()
-            else:
-                breakinfo = Collection(self.params).run()
+            breakinfo = Collection(self.params).run()
             self.__save_breakinfo(breakinfo)
 
         # Blat

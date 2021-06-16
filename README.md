@@ -80,7 +80,7 @@ Since step1 is time consuming, there is an option to compute step1 in parallel u
 ```bash
 # Parallel processing of step1
 # The default number for multiprocessing is 4
-$ fuseq <genomon_root_dir> <fuseq_root_dir> --collection-process <Number of multiprocessing>
+$ fuseq <genomon_root_dir> <fuseq_root_dir> --collection-processes <Number of multiprocessing>
 ```
 
 The final result depends on the blat command options in step2 and the filtering settings for breakpoints in step3.
@@ -133,17 +133,22 @@ The database can optionally be changed.
 $ fuseq <genomon_root_dir> <fuseq_root_dir> --reference </your/path/to/reference/genome>
 ```
 
-On Shirokane, the process of blat in step2 can be computed in parallel.
-The number of parallels can be changed with the following option.
-Note that computation on Shirokane requires --shirokane option.
+On Shirokane, collection (step1) and blat (step2) can be run as array job.
+The maximum number of tasks for an array job can be set with the following options.
+Note that --shirokane option is rquired when computing on Shirokane.
 
 ```bash
-# Computation on Shirokane
+# Compute with Shirokane
+# Available for Shirokane
 $ fuseq <genomon_root_dir> <fuseq_root_dir> --shirokane
 
-# Change the number of parallels of blat processing
+# Change the maximum number of array job tasks for collection (step1)
 # Available for Shirokane
-$ fuseq <genomon_root_dir> <fuseq_root_dir> --shirokane --blat-jobs 10
+$ fuseq <genomon_root_dir> <fuseq_root_dir> --shirokane --collection-tasks 100
+
+# Change the maximum number of array job tasks for blat (step2)
+# Available for Shirokane
+$ fuseq <genomon_root_dir> <fuseq_root_dir> --shirokane --blat-tasks 100
 ```
 
 See help for short names of options and more options.

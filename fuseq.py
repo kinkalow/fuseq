@@ -17,13 +17,13 @@ def main():
 
         # Paths
         work_dir = f'{params.fuseq_root_dir}/{mf_dir}/{params.work_dirname}'
-        skwork_dir = f'{params.fuseq_root_dir}/{mf_dir}/{params.work_dirname}/{params.skwork_dirname}'
+        swork_dir = f'{params.fuseq_root_dir}/{mf_dir}/{params.work_dirname}/{params.swork_dirname}'
         fuseq_path = f'{params.fuseq_root_dir}/{mf_dir}/{params.fuseq_filename}'
         inputs = {'mf_path': mf_path, 'star_dir': genomon.star_dir}
 
         # Add to params
         params.work_dir = work_dir
-        params.skwork_dir = skwork_dir
+        params.swork_dir = swork_dir
         params.fuseq_path = fuseq_path
         params.inputs = inputs
 

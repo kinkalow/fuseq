@@ -21,7 +21,7 @@ class Checker:
             exit(1)
 
     @staticmethod
-    def isshirokane():
+    def onshirokane():
         cmd = 'type qsub > /dev/null'
         p = subprocess.Popen(cmd, shell=True)
         p.communicate()
