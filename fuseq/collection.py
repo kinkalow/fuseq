@@ -102,11 +102,19 @@ echo "$cnt" >> {out_path}.cnt\n\n
 
         line_cnt = len(breakinfo)
         n_parallels = min(line_cnt, self.params.num_coll_parallels)
-        data_num = \
-            line_cnt // n_parallels if line_cnt % n_parallels == 0 \
-            else line_cnt // n_parallels + 1
-        heads = [i * data_num for i in range(n_parallels)] + [line_cnt]
         width = len(str(n_parallels))
+        # Determine the number of lines each process
+        lines_each_proc = line_cnt // n_parallels
+        n_plus1 = line_cnt - lines_each_proc * n_parallels
+        if n_plus1 == 0:
+            heads = [i * lines_each_proc for i in range(n_parallels + 1)]
+        else:
+            plus1lines_each_proc = lines_each_proc + 1
+            total_plus1lines = plus1lines_each_proc * n_plus1
+            n_plus0 = n_parallels - n_plus1
+            heads = \
+                [i * plus1lines_each_proc for i in range(n_plus1)] + \
+                [total_plus1lines + i * lines_each_proc for i in range(n_plus0 + 1)]
 
         jun_dic = {}
         out_paths = []
