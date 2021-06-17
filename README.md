@@ -23,7 +23,7 @@ $ fuseq --version  # check if the installation was successful
 
 fuseq command requires two arguments.
 The first argument specifies the output root directory of Genomon (genomon_root_dir).
-The second argument specifies a fuseq output root directory primarily for storing a breakpoint information file.
+The second argument specifies a fuseq output root directory (fuseq_root_dir) primarily for storing a breakpoint information file.
 For more information about the fuseq output structure, see the output section.
 
 ```bash
@@ -80,7 +80,7 @@ Since step1 is time consuming, there is an option to compute step1 in parallel u
 ```bash
 # Parallel processing of step1
 # The default number for multiprocessing is 4
-$ fuseq <genomon_root_dir> <fuseq_root_dir> --coll-procs <Number of multiprocessing>
+$ fuseq <genomon_root_dir> <fuseq_root_dir> --collection-processes <Number of multiprocessing>
 ```
 
 The final result depends on the blat command options in step2 and the filtering settings for breakpoints in step3.
@@ -88,8 +88,13 @@ These settings can be adjusted using the following options.
 
 ```bash
 # Change the options passed to blat command
+# The leading hyphen required for blat options can be omitted
+# The first letter of an argument value must not start with a hyphen
 # This option affects step2
-$ fuseq <genomon_root_dir> <fuseq_root_dir> --blat-opt '-minScore=20 -minMatch=1'
+$ fuseq <genomon_root_dir> <fuseq_root_dir> --blat-options 'minScore=20'            # OK
+$ fuseq <genomon_root_dir> <fuseq_root_dir> --blat-options '-minScore=20'           # NG
+$ fuseq <genomon_root_dir> <fuseq_root_dir> --blat-options 'minScore=20 -maxGap=3'  # OK
+$ fuseq <genomon_root_dir> <fuseq_root_dir> --blat-options 'minScore=20 maxGap=3'   # OK
 
 # Expand the filtering range for breakpoints
 # This option affects step3
@@ -126,6 +131,24 @@ The database can optionally be changed.
 ```bash
 # Change reference data
 $ fuseq <genomon_root_dir> <fuseq_root_dir> --reference </your/path/to/reference/genome>
+```
+
+On Shirokane, collection (step1) and blat (step2) can be run as array job.
+The maximum number of tasks for an array job can be set with the following options.
+Note that --shirokane option is rquired when computing on Shirokane.
+
+```bash
+# Compute on Shirokane
+# Available for Shirokane
+$ fuseq <genomon_root_dir> <fuseq_root_dir> --shirokane
+
+# Change the maximum number of array job tasks for collection (step1)
+# Available for Shirokane
+$ fuseq <genomon_root_dir> <fuseq_root_dir> --shirokane --collection-tasks 100
+
+# Change the maximum number of array job tasks for blat (step2)
+# Available for Shirokane
+$ fuseq <genomon_root_dir> <fuseq_root_dir> --shirokane --blat-tasks 100
 ```
 
 See help for short names of options and more options.

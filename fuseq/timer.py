@@ -1,32 +1,25 @@
 import time
 
 class Timer:
+    '''Measure the processing time of a method function'''
+
     def __init__(self, name):
         self.name = name
-        self._start = None
-        self._end = None
 
-    def start(self):
-        self._start = time.time()
+    def __call__(self, func):
 
-    def end(self):
-        self._end = time.time()
+        def wrap(cls, *args, **kwargs):
+            start = time.time()
+            ret = func(cls, *args, **kwargs)
+            et = time.time() - start
+            try:
+                # Class dependent
+                if cls.params.print_time:
+                    self.__print(et)
+            except AttributeError:
+                self.__print(et)
+            return ret
+        return wrap
 
-    def print(self):
-        if not self._start:
-            print('[Error] start method is not called')
-            return
-        end = self._end if self._end else time.time()
-        print(f'[Info] {self.name} elapased time: {end-self._start:.3f}[s]')
-
-
-#def time(func):
-#    import functools
-#    import datetime
-#    @functools.wraps(func)
-#    def wrapper(*args, **kwargs):
-#        start = datetime.datetime.today()
-#        result = func(*args, **kwargs)
-#        end = datetime.datetime.today()
-#        return end - start
-#    return wrapper
+    def __print(self, et):
+        print(f'[Info] {self.name} elapsed time: {et:.3f}[s]')

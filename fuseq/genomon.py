@@ -6,17 +6,17 @@ class Genomon:
     def __init__(self, opts):
         self.opts = opts
         # fusion path and star directory path
-        self._mf_path = {}
-        self._star_dir = opts.star_dir if opts.star_dir else f'{opts.genomon_root_dir}/star'
+        self.__mf_path = {}
+        self.__star_dir = opts.star_dir if opts.star_dir else f'{opts.genomon_root_dir}/star'
         # Create fusion paths and check if files exist
-        self._create_mf_path()
-        self._check_inside_star()
+        self.__create_mf_path()
+        self.__check_inside_star()
 
-    def _create_mf_path(self):
+    def __create_mf_path(self):
         if self.opts.fusion_file:
             path = self.opts.fusion_file
             Checker.isfile(path)
-            self._mf_path['noname'] = path
+            self.__mf_path['noname'] = path
         else:
             f = 'merge_fusionfusion_filt.txt' if self.opts.use_filt else 'merge_fusionfusion.txt'
             base = f'{self.opts.genomon_root_dir}/post_analysis'
@@ -24,11 +24,11 @@ class Genomon:
             for d in os.listdir(base):
                 path = f'{base}/{d}/{f}'
                 Checker.isfile(path)
-                self._mf_path[d] = path
+                self.__mf_path[d] = path
 
-    def _check_inside_star(self):
+    def __check_inside_star(self):
         # Check if star direcotry exits
-        star_dir = self._star_dir
+        star_dir = self.__star_dir
         Checker.isdir(star_dir)
         # Check for the existence of junction and sam files
         for d in os.listdir(star_dir):
@@ -40,8 +40,8 @@ class Genomon:
 
     @property
     def mf_dic(self):
-        return self._mf_path
+        return self.__mf_path
 
     @property
     def star_dir(self):
-        return self._star_dir
+        return self.__star_dir
