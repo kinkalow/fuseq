@@ -1,5 +1,5 @@
 import os
-import subprocess
+import shutil
 
 class Checker:
     @staticmethod
@@ -22,18 +22,14 @@ class Checker:
 
     @staticmethod
     def onshirokane():
-        cmd = 'type qsub > /dev/null'
-        p = subprocess.Popen(cmd, shell=True)
-        p.communicate()
-        if p.returncode:
-            print('Not in Shirokane')
+        ret = shutil.which('qsub')
+        if ret is None:
+            print('qsub is not installed')
             exit(1)
 
     @staticmethod
-    def has_tools():
-        cmd = 'type blat > /dev/null'
-        p = subprocess.Popen(cmd, shell=True)
-        p.communicate()
-        if p.returncode:
+    def has_blat(path):
+        ret = shutil.which(path) if path else None
+        if ret is None:
             print('blat is not installed')
             exit(1)

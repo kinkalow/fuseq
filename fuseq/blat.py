@@ -12,10 +12,10 @@ class Blat(Base):
 #!/bin/bash
 set -eu
 cd {work_dir}
-blat {blat_opts} -noHead {reference} {inp_file} {out_file}
-'''.format(work_dir=self.params.work_dir, blat_opts=self.params.blat_opts,
-           reference=self.params.reference, inp_file=self.files['coll'],
-           out_file=self.files['blat'])
+{blat_path} {blat_opts} -noHead {reference} {inp_file} {out_file}
+'''.format(work_dir=self.params.work_dir, blat_path=self.params.blat_path,
+           blat_opts=self.params.blat_opts, reference=self.params.reference,
+           inp_file=self.files['coll'], out_file=self.files['blat'])
         self._run_cmd(cmd, 'blat')
 
 
@@ -27,10 +27,14 @@ class PBlat(Base):
     def __init__(self, params):
         super().__init__()
         self.params = params
-        self.num_parallels, self.num_coll_lines = self.__calculate_numbers()
+        self.num_coll_lines = self.__calculate_coll_lines()
+        max_parallels = int(self.num_coll_lines / 2)
+        self.num_parallels = \
+            self.params.num_blat_parallels if self.params.num_blat_parallels < max_parallels \
+            else max_parallels
         self.num_numeric_suffixes = len(list(str(self.num_parallels)))
 
-    def __calculate_numbers(self):
+    def __calculate_coll_lines(self):
         cmd = '''\
 #!/bin/bash
 set -eu
@@ -39,9 +43,11 @@ n_lines=$(wc -l {inp_file} | cut -f 1 -d ' ')
 echo -n $n_lines
 '''.format(work_dir=self.params.work_dir, inp_file=self.files['coll'])
         n_lines = int(self._run_cmd(cmd, 'n_lines'))
-        max_parallels = int(n_lines / 2)
-        n_parallels = self.params.num_blat_parallels if self.params.num_blat_parallels < max_parallels else max_parallels
-        return n_parallels, n_lines
+        return n_lines
+
+    #
+    # Main
+    #
 
     def __split(self):
         n_reads = int(self.num_coll_lines / 2)
@@ -67,7 +73,6 @@ tail -{n_lines0} ../{inp_file} | split -a {width} -d -l {lines0} --numeric-suffi
         self._run_cmd(cmd, 'split_coll')
 
     def __blat(self):
-        blat_path = self._run_cmd('which blat', 'which_blat')
         cmd = '''\
 #!/usr/local/bin/nosh
 #$ -S /usr/local/bin/nosh
@@ -81,7 +86,7 @@ cd {swork_dir}
 {blat_path} {blat_opts} -noHead {reference} {inp_file}${{id}} {out_file}${{id}}
 '''.format(swork_dir=self.params.swork_dir, out_file=self.files['blat'],
            width=self.num_numeric_suffixes,
-           blat_path=blat_path, blat_opts=self.params.blat_opts,
+           blat_path=self.params.blat_path, blat_opts=self.params.blat_opts,
            reference=self.params.reference, inp_file=self.files['coll'])
         path = f'{self.params.swork_dir}/{self.files["blat"]}.sh'
         self._run_cmd_on_uge(cmd, path, self.num_parallels, 'blat_uge')

@@ -2,6 +2,7 @@ import argparse
 import configparser
 import os
 import re
+import shutil
 from fuseq import __version__
 from fuseq.checker import Checker
 
@@ -9,8 +10,8 @@ from fuseq.checker import Checker
 class Option:
     def __init__(self):
         self.__parse()
-        self.__check()
         self.__create()
+        self.__check()
 
     def __parse(self):
         prog = 'fuseq'
@@ -26,6 +27,7 @@ class Option:
         parser.add_argument('-B', '--restart-blat', default=False, action='store_true', help='Restart from Blat')
         parser.add_argument('-F', '--restart-filter', default=False, action='store_true', help='Restart from Blat filter')
         #
+        parser.add_argument('--blat-path', default='', type=str, help='Path to blat command')
         parser.add_argument('--collection-processes', default=4, type=int, help='Number of parallel processes for collection computation')
         parser.add_argument('--no-use-filt', default=False, action='store_true', help='Use merge_fusionfusion.txt instead of merge_fusionfusion_filt.txt')
         parser.add_argument('--readname', default='', type=str, help='Filtering with readname')
@@ -96,34 +98,6 @@ class Option:
                 print(f'[Error] Invalid key "{key}" in config file')
                 exit(1)
 
-    def __check(self):
-        args = self.args
-        Checker.isdir(args.genomon_root_directory)
-        Checker.isfile(args.reference)
-        if args.shirokane:
-            Checker.onshirokane()
-
-    def __get_lines(self, line_str):
-        """line_str='1,5,3,8-10,12' => [1, 3, 5, 8, 9, 10, 12]"""
-        if not line_str:
-            return []
-        line_sp = line_str.split(',')
-        lines = []
-        for line in line_sp:
-            m = re.match(r'^(\d+)-(\d+)$', line)
-            if m:
-                lines += list(range(int(m.group(1)), int(m.group(2)) + 1))
-            elif not re.match(r'^\d+$', line):
-                print(f'Not a line number: {line}')
-                exit(1)
-            else:
-                lines.append(int(line))
-        lines = sorted(list(set(lines)))
-        # Add header line
-        if lines[0] != 1:
-            lines.insert(0, 1)
-        return lines
-
     def __create(self):
         args = self.args
         num_coll_parallels, num_blat_parallels = self.__get_parallels(args)
@@ -139,6 +113,7 @@ class Option:
         args.delete_work = not args.no_delete_work
         # restart_blat
         # restart_filter
+        args.blat_path = shutil.which(args.blat_path if args.blat_path else 'blat')
         # collection_processes
         args.use_filt = False if args.no_use_filt else True
         args.readname_filt = args.readname
@@ -178,6 +153,35 @@ class Option:
         blat_opts = [opt if opt[0] == '-' else f'-{opt}'
                      for opt in re.split(' +', blat_opts.strip(' '))]
         return ' '.join(blat_opts)
+
+    def __get_lines(self, line_str):
+        """line_str='1,5,3,8-10,12' => [1, 3, 5, 8, 9, 10, 12]"""
+        if not line_str:
+            return []
+        line_sp = line_str.split(',')
+        lines = []
+        for line in line_sp:
+            m = re.match(r'^(\d+)-(\d+)$', line)
+            if m:
+                lines += list(range(int(m.group(1)), int(m.group(2)) + 1))
+            elif not re.match(r'^\d+$', line):
+                print(f'Not a line number: {line}')
+                exit(1)
+            else:
+                lines.append(int(line))
+        lines = sorted(list(set(lines)))
+        # Add header line
+        if lines[0] != 1:
+            lines.insert(0, 1)
+        return lines
+
+    def __check(self):
+        args = self.args
+        Checker.isdir(args.genomon_root_dir)
+        Checker.isfile(args.reference)
+        Checker.has_blat(args.blat_path)
+        if args.on_shirokane:
+            Checker.onshirokane()
 
     def refer(self):
         return self.args

@@ -3,13 +3,11 @@
 from fuseq.option import Option
 from fuseq.genomon import Genomon
 from fuseq.pipeline import Pipeline
-from fuseq.checker import Checker
 
 
 def main():
 
     opt = Option()
-    Checker.has_tools()
     genomon = Genomon(opt.refer())
 
     for mf_dir, mf_path in genomon.mf_dic.items():
@@ -27,7 +25,7 @@ def main():
         params.fuseq_path = fuseq_path
         params.inputs = inputs
 
-        # Run Blat
+        # Run
         pipeline = Pipeline(params)
         pipeline.run()
 

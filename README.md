@@ -138,7 +138,7 @@ The maximum number of tasks for an array job can be set with the following optio
 Note that --shirokane option is rquired when computing on Shirokane.
 
 ```bash
-# Compute with Shirokane
+# Compute on Shirokane
 # Available for Shirokane
 $ fuseq <genomon_root_dir> <fuseq_root_dir> --shirokane
 
