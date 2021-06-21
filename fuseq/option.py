@@ -7,6 +7,21 @@ from fuseq import __version__
 from fuseq.checker import Checker
 
 
+class BoolConv(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        if values is None:
+            setattr(namespace, self.dest, not parser.get_default(self.dest))
+            return
+        values = values.lower()
+        if values in ['true', '1', 'yes', 'on']:
+            setattr(namespace, self.dest, True)
+        elif values in ['false', '0', 'no', 'off']:
+            setattr(namespace, self.dest, False)
+        else:
+            print(f'--{self.dest.replace("_", "-")} option must be one of 1/0, yes/no, true/false, on/off without case sensitivity')
+            exit(1)
+
+
 class Option:
     def __init__(self):
         self.__parse()
@@ -23,26 +38,26 @@ class Option:
         parser.add_argument('-d', '--star-directory', default='', type=str, help='Alternative star directory in genomon output')
         parser.add_argument('-l', '--lines', default='', type=str, help='Line number in a fusion gene detection file')
         parser.add_argument('-f', '--fusion-file', default='', type=str, help='Alternative merge_fusionfusion_filt.txt file in genomon output')
-        parser.add_argument('-w', '--no-delete-work', default=False, action='store_true', help='Do not delete work directory')
-        parser.add_argument('-B', '--restart-blat', default=False, action='store_true', help='Restart from Blat')
-        parser.add_argument('-F', '--restart-filter', default=False, action='store_true', help='Restart from Blat filter')
+        parser.add_argument('-w', '--no-delete-work', default=False, action=BoolConv, nargs='?', help='Do not delete work directory')
+        parser.add_argument('-B', '--restart-blat', default=False, action=BoolConv, nargs='?', help='Restart from Blat')
+        parser.add_argument('-F', '--restart-filter', default=False, action=BoolConv, nargs='?', help='Restart from Blat filter')
         #
         parser.add_argument('--blat-path', default='', type=str, help='Path to blat command')
         parser.add_argument('--collection-processes', default=4, type=int, help='Number of parallel processes for collection computation')
-        parser.add_argument('--no-use-filt', default=False, action='store_true', help='Use merge_fusionfusion.txt instead of merge_fusionfusion_filt.txt')
+        parser.add_argument('--no-use-filt', default=False, action=BoolConv, nargs='?', help='Use merge_fusionfusion.txt instead of merge_fusionfusion_filt.txt')
         parser.add_argument('--readname', default='', type=str, help='Filtering with readname')
         parser.add_argument('--sequence', default='', type=str, help='Filtering with sequence')
         parser.add_argument('--start', default=0, type=int, help='Extend the start position of breakpoints at Blat filtering')
         parser.add_argument('--end', default=0, type=int, help='Extend the end position of breakpoints at Blat filtering')
         parser.add_argument('--reference', default='/share/pub/genomon/.genomon_local/genomon_pipeline-2.6.3/database/GRCh37/GRCh37.fa', type=str, help='Reference path')
         # Options on Shirokane
-        parser.add_argument('--shirokane', default=False, action='store_true', help='Compute on Shirokane')
+        parser.add_argument('--shirokane', default=False, action=BoolConv, nargs='?', help='Compute on Shirokane')
         parser.add_argument('--collection-tasks', default=100, type=int, help='Number of array job tasks for collection computation')
         parser.add_argument('--blat-tasks', default=100, type=int, help='Number of array job tasks for blat computation')
         #
-        parser.add_argument('--no-check-position-interval', default=False, action='store_true', help='Check if Qpos interval matches Tpos interval when filtering blat results')
-        parser.add_argument('--print-filtering-error', default=False, action='store_true', help='Display problematic data for blat filtering results')
-        parser.add_argument('--time', default=False, action='store_true', help='Display elapsed time')
+        parser.add_argument('--no-check-position-interval', default=False, action=BoolConv, nargs='?', help='Check if Qpos interval matches Tpos interval when filtering blat results')
+        parser.add_argument('--print-filtering-error', default=False, action=BoolConv, nargs='?', help='Display problematic data for blat filtering results')
+        parser.add_argument('--time', default=False, action=BoolConv, nargs='?', help='Display elapsed time')
         parser.add_argument('--version', action='version', version=f'{prog}: {__version__}')
         self.args = parser.parse_args()
 
