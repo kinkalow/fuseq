@@ -1,3 +1,4 @@
+import csv
 import glob
 import multiprocessing
 import os
@@ -82,6 +83,7 @@ jun_path='{jun_path}'
 sam_path="${{jun_path%\\.*}}.sam"
 out_path='{out_path}'
 
+touch "$out_path"
 cnt='0'
 for readname in $(cat "$jun_path" | awk '{{ \\
   if ( ($1 == "'$chr1'" && $2 == "'$bp1'" && $4 == "'$chr2'" && $5 == "'$bp2'") || \\
@@ -96,8 +98,7 @@ for readname in $(cat "$jun_path" | awk '{{ \\
       printf ">{linenr}-${{cnt}}_$readname\\n$seq\\n" >> "$out_path"
     done
 done
-
-echo "$cnt" >> {out_path}.cnt\n\n
+\n
 '''
 
         line_cnt = len(breakinfo)
@@ -125,8 +126,8 @@ echo "$cnt" >> {out_path}.cnt\n\n
             with open(script_path, 'w') as f:
                 f.write(cmd_head.format(out_path=out_path))
                 for d in breakinfo[head:tail]:
-                    [linenr, sample, chr1, bp1, strand1, gene1, junc1,
-                     chr2, bp2, strand2, gene2, junc2] = d.values()
+                    [linenr, sample, chr1, bp1, strand1, _, _,
+                     chr2, bp2, strand2, _, _] = d.values()
                     if sample not in jun_dic:
                         jun_dic[sample] = glob.glob(f'{self.star_dir}/{sample}/*.junction')[0]
                     jun_path = jun_dic[sample]
@@ -193,18 +194,27 @@ bash {coll_path}${{id}}.sh
             if has_err:
                 exit(1)
 
-        # Add counts to breakinfo
-        cnts = []
-        for i in range(n_parallels):
-            cnt_path = f'{out_paths[i]}.cnt'
-            with open(cnt_path, 'r') as f:
-                for row in f:
-                    cnts.append(row.rstrip('\n'))
-        assert(len(cnts) == len(breakinfo))
+        return out_paths
+
+    def __add_count_to(self, breakinfo):
+        coll_path = f'{self.params.work_dir}/{self.out_file}'
+        cnts = [0] * len(breakinfo)
+        with open(coll_path, 'r') as f:
+            reader = csv.reader(f, delimiter='\t')
+            prev_cnt = 0
+            tgt_linenr = 2  # first line is header line
+            for row in reader:
+                sp = row[0].split('_')[0].split('-')  # row[0]=2-1_READNAME => sp=[2,1]
+                cur_linenr = int(sp[0][1:])           # sp[0][0] = '>'
+                cur_cnt = int(sp[1])
+                if cur_linenr != tgt_linenr:
+                    cnts[tgt_linenr - 2] = prev_cnt
+                    tgt_linenr = cur_linenr
+                prev_cnt = cur_cnt
+                next(reader)  # sequence data
+            cnts[tgt_linenr - 2] = prev_cnt
         for i, cnt in enumerate(cnts):
             breakinfo[i]['cnt'] = cnt
-
-        return out_paths
 
     def __concat(self, inp_paths):
         inp_files = ' '.join([os.path.basename(path) for path in inp_paths])
@@ -222,4 +232,5 @@ cat {inp_files} > ../{out_file}
         breakinfo = self.__get_breakinfo()
         coll_out_paths = self.__collect(breakinfo)
         self.__concat(coll_out_paths)
+        self.__add_count_to(breakinfo)
         return breakinfo

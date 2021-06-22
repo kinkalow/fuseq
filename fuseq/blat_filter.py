@@ -211,7 +211,7 @@ grep '^>' {inp_file} | sed -e 's/^>//'
         readnames = readnames.split('\n')
 
         # Check
-        cnts = [int(d.get('cnt')) for d in self.breakinfo]
+        cnts = [d.get('cnt') for d in self.breakinfo]
         assert(len(readnames) == sum(cnts))
 
         # Create a dictionary with readname in key and breakinfo index in value
