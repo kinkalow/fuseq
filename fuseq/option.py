@@ -57,6 +57,8 @@ class Option:
         #
         parser.add_argument('--no-check-position-interval', default=False, action=BoolConv, nargs='?', help='Check if Qpos interval matches Tpos interval when filtering blat results')
         parser.add_argument('--print-filtering-error', default=False, action=BoolConv, nargs='?', help='Display problematic data for blat filtering results')
+        parser.add_argument('--stop-blat', default=False, action=BoolConv, nargs='?', help='Run collection and exit')
+        parser.add_argument('--stop-filter', default=False, action=BoolConv, nargs='?', help='Run collection and blat and exit')
         parser.add_argument('--time', default=False, action=BoolConv, nargs='?', help='Display elapsed time')
         parser.add_argument('--version', action='version', version=f'{prog}: {__version__}')
         self.args = parser.parse_args()

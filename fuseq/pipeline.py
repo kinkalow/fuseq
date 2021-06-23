@@ -45,7 +45,7 @@ class Pipeline(Base):
             breakinfo = json.load(f)
         return breakinfo
 
-    def __delete_work_dir(self, make_empty_dir):
+    def __delete_work_dir(self, make_empty_dir=False):
         shutil.rmtree(self.params.work_dir, ignore_errors=True)
         if make_empty_dir:
             os.makedirs(self.params.work_dir)
@@ -161,12 +161,18 @@ class Pipeline(Base):
             breakinfo = Collection(self.params).run()
             self.__save_breakinfo(breakinfo)
 
+        if self.params.stop_blat:
+            return
+
         # Blat
         if not self.params.restart_filter:
             if self.params.on_shirokane:
                 PBlat(self.params).run()
             else:
                 Blat(self.params).run()
+
+        if self.params.stop_filter:
+            return
 
         # Filter
         BlatFilter(self.params, breakinfo).run()
